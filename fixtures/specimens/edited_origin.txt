@@ -1,0 +1,1 @@
+A sound research workflow keeps observations separate from explanations. Preserve the raw measurements first, document every transformation, and only then compare rival causal models. This sequence matters because even an elegant theory cannot rescue undocumented preprocessing.

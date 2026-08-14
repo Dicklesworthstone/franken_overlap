@@ -1,0 +1,3 @@
+A robust scientific workflow separates observations from explanations. First preserve the raw measurements, then document every transformation, and only afterward compare competing causal models. The order matters because a beautiful theory cannot repair an undocumented preprocessing step.
+
+When an apparent effect survives replication, the next task is not celebration but intervention: vary one mechanism at a time, predict what each model says should change, and record failures with the same care as successes.

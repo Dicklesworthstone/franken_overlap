@@ -1,0 +1,1 @@
+A railway timetable records departures from coastal stations, platform assignments, maintenance windows, and holiday service changes. Tickets may be exchanged before departure subject to the fare rules printed on the reverse.

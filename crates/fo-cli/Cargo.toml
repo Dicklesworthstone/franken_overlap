@@ -1,0 +1,28 @@
+[package]
+name = "fo-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file = "../../LICENSE"
+authors.workspace = true
+repository.workspace = true
+description = "Command-line interface for FrankenOverlap"
+publish = false
+
+[features]
+default = []
+frankenscipy = ["fo-core/frankenscipy"]
+
+[[bin]]
+name = "fo"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+fo-core.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

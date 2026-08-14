@@ -1,0 +1,6 @@
+[alias]
+xtest = "test --workspace --all-targets"
+xclippy = "clippy --workspace --all-targets"
+xfmt = "fmt --all -- --check"
+xdoc = "doc --workspace --no-deps"
+xcheck-fft = "check -p fo-cli --features frankenscipy"

@@ -1,0 +1,16 @@
+[package]
+name = "fo-conformance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file = "../../LICENSE"
+authors.workspace = true
+repository.workspace = true
+description = "End-to-end conformance tests for FrankenOverlap"
+publish = false
+
+[dependencies]
+fo-core.workspace = true
+
+[lints]
+workspace = true

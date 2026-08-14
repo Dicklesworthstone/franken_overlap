@@ -1,0 +1,21 @@
+[package]
+name = "franken-overlap"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file = "../../LICENSE"
+authors.workspace = true
+repository.workspace = true
+description = "Ultra-fast sparse-spectral textual overlap detection and approximate alignment in safe Rust"
+keywords = ["text", "alignment", "similarity", "correlation", "search"]
+categories = ["text-processing", "algorithms"]
+
+[features]
+default = []
+frankenscipy = ["fo-core/frankenscipy"]
+
+[dependencies]
+fo-core.workspace = true
+
+[lints]
+workspace = true

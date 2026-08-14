@@ -1,0 +1,22 @@
+[package]
+name = "fo-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file = "../../LICENSE"
+authors.workspace = true
+repository.workspace = true
+description = "Sparse-spectral textual overlap and approximate alignment core"
+
+[features]
+default = []
+frankenscipy = ["dep:fsci-fft"]
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+unicode-normalization.workspace = true
+fsci-fft = { git = "https://github.com/Dicklesworthstone/frankenscipy", rev = "2da83a7f42280d517241d6d2874d4ba9ebc2484c", package = "fsci-fft", optional = true }
+
+[lints]
+workspace = true
