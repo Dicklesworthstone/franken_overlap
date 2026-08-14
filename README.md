@@ -27,7 +27,7 @@ FrankenOverlap preserves categorical equality instead:
 
 ## Current state
 
-The initial repository contains a coherent, working vertical slice:
+The initial repository contains a coherent implemented vertical slice:
 
 - Unicode NFKC normalization, lowercasing, punctuation policy, and whitespace canonicalization
 - 128-bit rolling q-gram fingerprints
@@ -84,7 +84,7 @@ fo scan large_document.txt specimen.txt --minimum-score 0.35
 The default dense path is a bounded direct reference implementation. Enable FrankenSciPy for FFT-backed correlation:
 
 ```bash
-cargo build --release --features frankenscipy
+cargo build --release -p fo-cli --features frankenscipy
 ```
 
 ## Rust API
@@ -237,11 +237,18 @@ These are sequencing limits, not scope cuts. The intended terminal system is des
 ## Validation
 
 ```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
+cargo check --workspace --all-targets
 cargo test --workspace
+cargo clippy --workspace --all-targets
 cargo test -p fo-core --features frankenscipy
 ```
+
+Before a tagged release, additionally require `cargo fmt --all -- --check` and promote Clippy
+warnings to errors with `cargo clippy --workspace --all-targets -- -D warnings`.
+
+The initial construction environment did not contain a Rust toolchain, so the exact local checks
+and the CI handoff are recorded in [`VALIDATION.md`](VALIDATION.md). Compilation and conformance in
+GitHub Actions are the authoritative build evidence.
 
 The binary format is fail-closed: bad magic, unknown versions or flags, unsorted dictionaries, invalid postings, inconsistent document frequencies, impossible sizes, and trailing bytes are rejected.
 

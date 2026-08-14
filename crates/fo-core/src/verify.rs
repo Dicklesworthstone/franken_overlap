@@ -80,7 +80,7 @@ fn semi_global_impl(
         };
         if first_column <= last_column {
             for column in first_column..=last_column {
-                let substitution = u32::from(pattern[row - 1] != text[column - 1]);
+                let substitution = if pattern[row - 1] == text[column - 1] { 0 } else { 1 };
                 let diagonal = Cell {
                     cost: previous[column - 1].cost.saturating_add(substitution),
                     start: previous[column - 1].start,
@@ -117,7 +117,8 @@ fn semi_global_impl(
     if first_end < last_end {
         for end in first_end + 1..=last_end {
             let candidate = previous[end];
-            if alignment_order(candidate, end, best, best_end, expected_start, pattern.len()).is_lt()
+            if alignment_order(candidate, end, best, best_end, expected_start, pattern.len())
+                .is_lt()
             {
                 best = candidate;
                 best_end = end;
@@ -155,7 +156,8 @@ pub fn global_levenshtein(left: &[u32], right: &[u32]) -> usize {
     for (row_index, &row_value) in rows.iter().enumerate() {
         current[0] = row_index + 1;
         for (column_index, &column_value) in columns.iter().enumerate() {
-            let substitution = previous[column_index] + usize::from(row_value != column_value);
+            let substitution = previous[column_index]
+                + if row_value == column_value { 0 } else { 1 };
             let deletion = previous[column_index + 1] + 1;
             let insertion = current[column_index] + 1;
             current[column_index + 1] = substitution.min(deletion).min(insertion);

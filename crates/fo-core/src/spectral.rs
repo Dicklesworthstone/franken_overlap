@@ -104,11 +104,12 @@ fn direct_scores(corpus: &[u32], specimen: &[u32], options: &SpectralOptions) ->
         .saturating_mul(options.repetitions as u128);
     if work > options.direct_work_limit as u128 {
         return Err(FoError::Spectral(format!(
-            "direct CountSketch workload {work} exceeds limit {}; rebuild with --features frankenscipy or raise direct_work_limit",
+            "direct CountSketch workload {work} exceeds limit {}; rebuild with --features \
+             frankenscipy or raise direct_work_limit",
             options.direct_work_limit
         )));
     }
-    let denominator = (specimen.len() * options.repetitions) as f64;
+    let denominator = specimen.len() as f64 * options.repetitions as f64;
     let mut scores = vec![0.0f32; offsets];
     for offset in 0..offsets {
         let mut score = 0.0f64;
@@ -137,7 +138,9 @@ fn fft_scores(corpus: &[u32], specimen: &[u32], options: &SpectralOptions) -> Re
             let corpus_channel = corpus
                 .iter()
                 .map(|&token| {
-                    if categorical_hash(token, repetition) % options.buckets as u64 == bucket as u64 {
+                    if categorical_hash(token, repetition) % options.buckets as u64
+                        == bucket as u64
+                    {
                         categorical_sign(token, repetition)
                     } else {
                         0.0
@@ -147,7 +150,9 @@ fn fft_scores(corpus: &[u32], specimen: &[u32], options: &SpectralOptions) -> Re
             let specimen_channel = specimen
                 .iter()
                 .map(|&token| {
-                    if categorical_hash(token, repetition) % options.buckets as u64 == bucket as u64 {
+                    if categorical_hash(token, repetition) % options.buckets as u64
+                        == bucket as u64
+                    {
                         categorical_sign(token, repetition)
                     } else {
                         0.0
@@ -167,7 +172,7 @@ fn fft_scores(corpus: &[u32], specimen: &[u32], options: &SpectralOptions) -> Re
             }
         }
     }
-    let denominator = (specimen.len() * options.repetitions) as f64;
+    let denominator = specimen.len() as f64 * options.repetitions as f64;
     Ok(accumulated
         .into_iter()
         .map(|score| (score / denominator).clamp(-1.0, 1.0) as f32)

@@ -61,7 +61,11 @@ fn edited_methodology_passage_ranks_origin_first() {
 
 #[test]
 fn partial_reuse_is_recovered_as_a_supported_span() {
-    let specimen = "A long preface was added by an editor. Every transformation must be documented and raw measurements should be preserved before rival causal models are compared. This unrelated epilogue discusses typography and printing.";
+    let specimen = concat!(
+        "A long preface was added by an editor. Every transformation must be documented and raw ",
+        "measurements should be preserved before rival causal models are compared. This unrelated ",
+        "epilogue discusses typography and printing."
+    );
     let hits = fixture_index()
         .search(specimen, &SearchOptions {
             minimum_similarity: 0.18,
@@ -95,7 +99,10 @@ fn unicode_width_case_and_punctuation_drift_normalize_away() {
 fn unrelated_text_does_not_pass_a_strict_threshold() {
     let hits = fixture_index()
         .search(
-            "Volcanic basalt cools into hexagonal columns while seawater erodes the surrounding cliff.",
+            concat!(
+                "Volcanic basalt cools into hexagonal columns while seawater erodes the ",
+                "surrounding cliff."
+            ),
             &SearchOptions {
                 minimum_similarity: 0.72,
                 ..SearchOptions::default()

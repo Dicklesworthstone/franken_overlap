@@ -39,7 +39,7 @@ impl Index {
             &qgram_hashes(&query.tokens, self.config.qgram_size)?,
             self.config.winnow_window,
         );
-        if query_features.is_empty() {
+        if query_features.len() < options.minimum_anchor_hits as usize {
             return Ok(self.search_short_query(&query.tokens, options));
         }
 
@@ -87,7 +87,11 @@ impl Index {
         suppress_nearby_candidates(&mut candidates, options);
         candidates.truncate(options.max_candidates);
 
-        let mut results = Vec::with_capacity(candidates.len().min(options.max_results * 4));
+        let mut results = Vec::with_capacity(
+            candidates
+                .len()
+                .min(options.max_results.saturating_mul(4)),
+        );
         for candidate in candidates {
             let Some(result) = self.score_candidate(
                 &query.tokens,
@@ -158,6 +162,9 @@ impl Index {
             ..ChainOptions::default()
         };
         let chain = chain_anchors(anchors, &chain_options)?;
+        if chain.anchors.len() < options.minimum_anchor_hits as usize {
+            return None;
+        }
 
         // Verify the query interval actually supported by the chain, with one
         // q-gram of context on either side. This preserves sensitivity to partial
@@ -276,13 +283,17 @@ impl Index {
                 let window_start = predicted_start.saturating_sub(options.verification_slack);
                 let window_end = predicted_start
                     .saturating_add(query.len())
-                    .saturating_add(options.verification_slack.min(query.len() * 2 + 8))
+                    .saturating_add(
+                        options
+                            .verification_slack
+                            .min(query.len().saturating_mul(2).saturating_add(8)),
+                    )
                     .min(document.normalized.tokens.len());
                 let alignment = semi_global_banded(
                     query,
                     &document.normalized.tokens[window_start..window_end],
                     predicted_start.saturating_sub(window_start),
-                    options.verification_band.max(query.len() + 8),
+                    options.verification_band.max(query.len().saturating_add(8)),
                 );
                 let corpus_start = window_start + alignment.text_start;
                 let corpus_end = window_start + alignment.text_end;
@@ -358,7 +369,8 @@ fn rank_and_deduplicate(results: &mut Vec<SearchResult>, max_results: usize) {
                 .corpus_end
                 .saturating_sub(prior.corpus_start)
                 .min(result.corpus_end.saturating_sub(result.corpus_start));
-            shorter > 0 && intersection * 5 >= shorter * 4
+            shorter > 0
+                && intersection.saturating_mul(5) >= shorter.saturating_mul(4)
         });
         if !duplicate {
             selected.push(result);
@@ -380,7 +392,11 @@ mod tests {
         builder
             .add_document(
                 "source.txt",
-                "Before dawn the observatory opened its copper shutters. The team measured a faint repeating signal, checked every instrument, and published the raw observations before proposing an explanation.",
+                concat!(
+                    "Before dawn the observatory opened its copper shutters. The team measured ",
+                    "a faint repeating signal, checked every instrument, and published the raw ",
+                    "observations before proposing an explanation."
+                ),
             )
             .expect("source");
         builder
@@ -392,7 +408,11 @@ mod tests {
         let index = builder.build().expect("index");
         let hits = index
             .search(
-                "The researchers detected a faint, repeating signal before sunrise, verified all their instruments, and released the raw observations before suggesting an explanation.",
+                concat!(
+                    "The researchers detected a faint, repeating signal before sunrise, verified ",
+                    "all their instruments, and released the raw observations before suggesting ",
+                    "an explanation."
+                ),
                 &SearchOptions {
                     minimum_similarity: 0.25,
                     ..SearchOptions::default()
@@ -417,5 +437,24 @@ mod tests {
             .search("abc", &SearchOptions::default())
             .expect("search");
         assert_eq!(hits[0].matched_text, "abc");
+    }
+
+    #[test]
+    fn one_fingerprint_query_uses_direct_fallback() {
+        let config = IndexConfig {
+            qgram_size: 7,
+            winnow_window: 12,
+            ..IndexConfig::default()
+        };
+        let mut builder = IndexBuilder::new(config).expect("builder");
+        builder
+            .add_document("a", "prefix abcdefg suffix")
+            .expect("add");
+        let hits = builder
+            .build()
+            .expect("index")
+            .search("abcdefg", &SearchOptions::default())
+            .expect("search");
+        assert_eq!(hits[0].matched_text, "abcdefg");
     }
 }

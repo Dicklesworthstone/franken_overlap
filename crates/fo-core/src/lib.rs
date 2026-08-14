@@ -20,5 +20,6 @@ pub use model::{
     SearchResult,
 };
 pub use normalize::{NormalizedText, normalize};
+pub use spectral::{SpectralOptions, SpectralPeak, spectral_scan};
 pub use verify::{Alignment, global_levenshtein, semi_global_banded};
 pub use winnow::winnow;

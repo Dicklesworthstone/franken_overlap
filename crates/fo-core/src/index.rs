@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{
     Feature, Fingerprint, FoError, IndexConfig, IndexStats, NormalizationProfile, NormalizedText,
@@ -14,6 +15,9 @@ const MAX_STRING_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_DOCUMENTS: u32 = 100_000_000;
 const MAX_ENTRIES: u64 = 2_000_000_000;
 const MAX_POSTINGS_PER_ENTRY: u32 = 2_000_000_000;
+const MIN_DOCUMENT_RECORD_BYTES: u64 = 20;
+const MIN_ENTRY_RECORD_BYTES: u64 = 24;
+static TEMPORARY_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone)]
 pub struct Document {
@@ -94,6 +98,32 @@ impl Index {
 
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
+        if self.documents.len() > MAX_DOCUMENTS as usize {
+            return Err(FoError::InvalidConfig(format!(
+                "document count {} exceeds the index safety limit {MAX_DOCUMENTS}",
+                self.documents.len()
+            )));
+        }
+        let entry_count = u64::try_from(self.entries.len())
+            .map_err(|_| FoError::InvalidConfig("entry count exceeds u64".to_owned()))?;
+        if entry_count > MAX_ENTRIES {
+            return Err(FoError::InvalidConfig(format!(
+                "entry count {} exceeds the index safety limit {MAX_ENTRIES}",
+                self.entries.len()
+            )));
+        }
+        if let Some(entry) = self
+            .entries
+            .iter()
+            .find(|entry| entry.postings.len() > MAX_POSTINGS_PER_ENTRY as usize)
+        {
+            return Err(FoError::InvalidConfig(format!(
+                "fingerprint {:?} has {} postings, exceeding the safety limit \
+                 {MAX_POSTINGS_PER_ENTRY}",
+                entry.fingerprint,
+                entry.postings.len()
+            )));
+        }
         if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
             fs::create_dir_all(parent).map_err(|error| FoError::io(parent, error))?;
         }
@@ -138,8 +168,6 @@ impl Index {
             checked_u32(self.documents.len(), "document count")?,
         )
         .map_err(|error| FoError::io(&temporary, error))?;
-        let entry_count = u64::try_from(self.entries.len())
-            .map_err(|_| FoError::InvalidConfig("entry count exceeds u64".to_owned()))?;
         write_u64(&mut writer, entry_count)
             .map_err(|error| FoError::io(&temporary, error))?;
 
@@ -172,10 +200,22 @@ impl Index {
             .map_err(|error| FoError::io(&temporary, error.into_error()))?;
         file.sync_all()
             .map_err(|error| FoError::io(&temporary, error))?;
-        if path.exists() {
-            fs::remove_file(path).map_err(|error| FoError::io(path, error))?;
+        match fs::rename(&temporary, path) {
+            Ok(()) => {}
+            Err(error) => {
+                let replaceable = path.exists()
+                    && matches!(
+                        error.kind(),
+                        std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::PermissionDenied
+                    );
+                if !replaceable {
+                    return Err(FoError::io(path, error));
+                }
+                fs::remove_file(path).map_err(|remove_error| FoError::io(path, remove_error))?;
+                fs::rename(&temporary, path)
+                    .map_err(|rename_error| FoError::io(path, rename_error))?;
+            }
         }
-        fs::rename(&temporary, path).map_err(|error| FoError::io(path, error))?;
         Ok(())
     }
 
@@ -232,19 +272,24 @@ impl Index {
         config.validate()?;
 
         let document_count = read_u32(&mut reader).map_err(|error| FoError::io(path, error))?;
-        if document_count > MAX_DOCUMENTS {
+        if document_count > MAX_DOCUMENTS
+            || u64::from(document_count).saturating_mul(MIN_DOCUMENT_RECORD_BYTES) > file_len
+        {
             return Err(FoError::InvalidIndex(format!(
-                "document count {document_count} exceeds safety limit {MAX_DOCUMENTS}"
+                "document count {document_count} exceeds a safe bound"
             )));
         }
         let entry_count_u64 = read_u64(&mut reader).map_err(|error| FoError::io(path, error))?;
-        if entry_count_u64 > MAX_ENTRIES || entry_count_u64 > file_len {
+        if entry_count_u64 > MAX_ENTRIES
+            || entry_count_u64.saturating_mul(MIN_ENTRY_RECORD_BYTES) > file_len
+        {
             return Err(FoError::InvalidIndex(format!(
                 "entry count {entry_count_u64} exceeds a safe bound"
             )));
         }
-        let entry_count = usize::try_from(entry_count_u64)
-            .map_err(|_| FoError::InvalidIndex("entry count does not fit this platform".to_owned()))?;
+        let entry_count = usize::try_from(entry_count_u64).map_err(|_| {
+            FoError::InvalidIndex("entry count does not fit this platform".to_owned())
+        })?;
 
         let mut documents = Vec::with_capacity(document_count as usize);
         for expected_id in 0..document_count {
@@ -288,7 +333,17 @@ impl Index {
                 read_u32(&mut reader).map_err(|error| FoError::io(path, error))?;
             let posting_count_u32 =
                 read_u32(&mut reader).map_err(|error| FoError::io(path, error))?;
-            if posting_count_u32 > MAX_POSTINGS_PER_ENTRY
+            if document_frequency == 0
+                || document_frequency > document_count
+                || document_frequency > posting_count_u32
+            {
+                return Err(FoError::InvalidIndex(format!(
+                    "document frequency {document_frequency} is impossible for \
+                     {posting_count_u32} postings across {document_count} documents"
+                )));
+            }
+            if posting_count_u32 == 0
+                || posting_count_u32 > MAX_POSTINGS_PER_ENTRY
                 || u64::from(posting_count_u32).saturating_mul(8) > file_len
             {
                 return Err(FoError::InvalidIndex(format!(
@@ -313,7 +368,11 @@ impl Index {
                         posting.document_id
                     )));
                 };
-                if posting.position as usize >= document.normalized.tokens.len() {
+                let position = posting.position as usize;
+                if position
+                    .checked_add(config.qgram_size)
+                    .map_or(true, |end| end > document.normalized.tokens.len())
+                {
                     return Err(FoError::InvalidIndex(format!(
                         "posting position {} is outside document {}",
                         posting.position, posting.document_id
@@ -333,7 +392,8 @@ impl Index {
             }
             if observed_document_frequency != document_frequency {
                 return Err(FoError::InvalidIndex(format!(
-                    "document frequency {document_frequency} disagrees with observed {observed_document_frequency}"
+                    "document frequency {document_frequency} disagrees with observed \
+                     {observed_document_frequency}"
                 )));
             }
             entries.push(IndexEntry {
@@ -455,7 +515,8 @@ fn temporary_path(path: &Path) -> PathBuf {
     let mut name = path
         .file_name()
         .map_or_else(|| "index".into(), |name| name.to_os_string());
-    name.push(format!(".tmp-{}", std::process::id()));
+    let sequence = TEMPORARY_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    name.push(format!(".tmp-{}-{sequence}", std::process::id()));
     path.with_file_name(name)
 }
 
@@ -485,7 +546,19 @@ fn read_u64(reader: &mut impl Read) -> std::io::Result<u64> {
 }
 
 fn write_string(writer: &mut impl Write, value: &str) -> std::io::Result<()> {
-    write_u64(writer, value.len() as u64)?;
+    let length = u64::try_from(value.len()).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "string length does not fit the index format",
+        )
+    })?;
+    if length > MAX_STRING_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("string length {length} exceeds the {MAX_STRING_BYTES}-byte safety limit"),
+        ));
+    }
+    write_u64(writer, length)?;
     writer.write_all(value.as_bytes())
 }
 
