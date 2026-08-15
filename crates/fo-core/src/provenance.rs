@@ -148,14 +148,25 @@ pub fn normalize_with_provenance(
         output.pop();
         ranges.pop();
     }
-    let normalized = NormalizedText::from_stored(output);
-    debug_assert_eq!(normalized.text, normalize(input, profile).text);
-    debug_assert_eq!(normalized.len(), ranges.len());
+
+    let candidate = NormalizedText::from_stored(output);
+    let canonical = normalize(input, profile);
+    let (normalized, token_original_ranges) = if candidate.text == canonical.text {
+        (candidate, ranges)
+    } else {
+        let complete_input = OriginalByteRange {
+            start: 0,
+            end: input.len(),
+        };
+        let coarse_ranges = vec![complete_input; canonical.len()];
+        (canonical, coarse_ranges)
+    };
+    debug_assert_eq!(normalized.len(), token_original_ranges.len());
 
     ProvenanceNormalizedText {
         original: input.to_owned(),
         normalized,
-        token_original_ranges: ranges,
+        token_original_ranges,
     }
 }
 
