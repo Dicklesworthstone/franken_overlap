@@ -278,7 +278,13 @@ impl HybridIndex {
         options.validate()?;
         let lexical_query = LexicalQuery::parse(query_text)?;
         let positive_terms = lexical_query.positive_terms().len();
-        let selected_mode = select_mode(query_text, positive_terms, options.mode);
+        let positive_term_occurrences = lexical_query
+            .clauses
+            .iter()
+            .filter(|clause| clause.occur != crate::LexicalOccur::MustNot)
+            .map(|clause| clause.terms.len())
+            .sum::<usize>();
+        let selected_mode = select_mode(query_text, positive_term_occurrences, options.mode);
         let overlap_specimen = overlap_specimen(&lexical_query);
         let expanded_limit = options
             .max_results
@@ -351,16 +357,15 @@ impl HybridIndex {
                 .overlap
                 .as_ref()
                 .map_or(0.0, |(_, evidence)| overlap_score(evidence));
-            let reciprocal_rank_score = reciprocal_rank_fusion(
-                lexical_rank,
-                overlap_rank,
-                options.rrf_constant,
-            );
-            let phrase_signal = candidate.lexical.as_ref().map_or(0.0, |(_, result)| {
-                (result.explanation.exact_phrase_matches as f32).ln_1p()
-                    / 2.0f32.ln()
-            })
-            .clamp(0.0, 1.0);
+            let reciprocal_rank_score =
+                reciprocal_rank_fusion(lexical_rank, overlap_rank, options.rrf_constant);
+            let phrase_signal = candidate
+                .lexical
+                .as_ref()
+                .map_or(0.0, |(_, result)| {
+                    (result.explanation.exact_phrase_matches as f32).ln_1p() / 2.0f32.ln()
+                })
+                .clamp(0.0, 1.0);
             let agreement = candidate.lexical.is_some() && candidate.overlap.is_some();
             let weighted_sum = options.lexical_weight * lexical_score
                 + options.overlap_weight * overlap_score
@@ -381,8 +386,8 @@ impl HybridIndex {
             };
             let phrase_bonus = options.phrase_bonus * phrase_signal;
             let bonus = (agreement_bonus + phrase_bonus).clamp(0.0, 0.75);
-            let final_score = (1.0 - (1.0 - base_score.clamp(0.0, 1.0)) * (1.0 - bonus))
-                .clamp(0.0, 1.0);
+            let final_score =
+                (1.0 - (1.0 - base_score.clamp(0.0, 1.0)) * (1.0 - bonus)).clamp(0.0, 1.0);
             if final_score < options.minimum_score {
                 continue;
             }
@@ -434,6 +439,7 @@ impl HybridIndex {
             requested_mode: options.mode,
             selected_mode,
             positive_terms,
+            positive_term_occurrences,
             overlap_plan,
             lexical_candidates: lexical_results.len(),
             overlap_candidates: overlap_results.len(),
@@ -671,6 +677,7 @@ pub struct HybridSearchReport {
     pub requested_mode: HybridQueryMode,
     pub selected_mode: HybridQueryMode,
     pub positive_terms: usize,
+    pub positive_term_occurrences: usize,
     pub overlap_plan: Option<QueryPlan>,
     pub lexical_candidates: usize,
     pub overlap_candidates: usize,
@@ -761,7 +768,7 @@ fn reciprocal_rank_fusion(
         .flatten()
         .map(|rank| (constant + 1.0) / (constant + rank as f32))
         .sum::<f32>();
-    let lanes = usize::from(lexical_rank.is_some()) + usize::from(overlap_rank.is_some());
+    let lanes = (lexical_rank.is_some() as usize) + (overlap_rank.is_some() as usize);
     if lanes == 0 {
         0.0
     } else {
@@ -817,8 +824,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        HybridDocumentInput, HybridIndex, HybridIndexBuilder, HybridIndexConfig,
-        HybridQueryMode, HybridSearchOptions,
+        HybridDocumentInput, HybridIndex, HybridIndexBuilder, HybridIndexConfig, HybridQueryMode,
+        HybridSearchOptions,
     };
 
     fn build_index() -> HybridIndex {
