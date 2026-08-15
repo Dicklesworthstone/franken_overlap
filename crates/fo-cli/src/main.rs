@@ -7,9 +7,9 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use fo_core::{
-    CalibratedResult, CalibrationModel, Index, IndexBuilder, IndexConfig, NormalizationProfile,
-    PunctuationMode, SearchIntent, SearchOptions, SearchResult, SpectralOptions, normalize,
-    spectral_scan,
+    CalibratedResult, CalibrationModel, Index, IndexBuilder, IndexConfig, IndexFileStats,
+    IndexSaveOptions, IndexStorageFormat, NormalizationProfile, PunctuationMode, SearchIntent,
+    SearchOptions, SearchResult, SpectralOptions, normalize, spectral_scan,
 };
 use rayon::prelude::*;
 use serde::Serialize;
@@ -52,6 +52,9 @@ struct IndexCommand {
     qgram: usize,
     #[arg(long, default_value_t = 12)]
     window: usize,
+    /// Checksummed delta-varint v2 by default; use legacy-fixed only for old readers.
+    #[arg(long, value_enum, default_value = "delta-varint")]
+    storage: StorageArg,
     #[arg(long, value_enum, default_value = "to-space")]
     punctuation: PunctuationArg,
     #[arg(long, action = clap::ArgAction::Set, default_value_t = true)]
@@ -144,6 +147,21 @@ struct ScanCommand {
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
+enum StorageArg {
+    DeltaVarint,
+    LegacyFixed,
+}
+
+impl From<StorageArg> for IndexStorageFormat {
+    fn from(value: StorageArg) -> Self {
+        match value {
+            StorageArg::DeltaVarint => Self::DeltaVarintV2,
+            StorageArg::LegacyFixed => Self::LegacyFixedV1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
 enum PunctuationArg {
     Keep,
     ToSpace,
@@ -185,12 +203,14 @@ struct IndexReport {
     distinct_fingerprints: usize,
     postings: usize,
     skipped_files: usize,
+    storage: IndexFileStats,
 }
 
 #[derive(Debug, Serialize)]
 struct InspectReport<'a> {
     config: &'a IndexConfig,
     stats: fo_core::IndexStats,
+    storage: IndexFileStats,
     documents: Vec<DocumentReport<'a>>,
 }
 
@@ -266,7 +286,12 @@ fn run_index(command: IndexCommand) -> CliResult<()> {
             "all eligible files were empty, binary, oversized, or invalid UTF-8",
         ));
     }
-    index.save(&command.output)?;
+    let storage = index.save_with_options(
+        &command.output,
+        IndexSaveOptions {
+            format: command.storage.into(),
+        },
+    )?;
     let stats = index.stats();
     let report = IndexReport {
         output: command.output.display().to_string(),
@@ -275,16 +300,25 @@ fn run_index(command: IndexCommand) -> CliResult<()> {
         distinct_fingerprints: stats.distinct_fingerprints,
         postings: stats.postings,
         skipped_files,
+        storage,
     };
     if command.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         println!("Wrote {}", report.output);
-        println!("  documents:            {}", report.documents);
-        println!("  normalized tokens:    {}", report.normalized_tokens);
-        println!("  distinct fingerprints:{}", report.distinct_fingerprints);
-        println!("  postings:             {}", report.postings);
-        println!("  skipped files:        {}", report.skipped_files);
+        println!("  documents:             {}", report.documents);
+        println!("  normalized tokens:     {}", report.normalized_tokens);
+        println!("  distinct fingerprints: {}", report.distinct_fingerprints);
+        println!("  postings:              {}", report.postings);
+        println!("  skipped files:         {}", report.skipped_files);
+        println!("  storage format:        {:?}", report.storage.format);
+        println!("  file bytes:            {}", report.storage.file_bytes);
+        println!(
+            "  posting payload:       {} / {} bytes ({:.3}x)",
+            report.storage.posting_payload_bytes,
+            report.storage.fixed_posting_bytes,
+            report.storage.posting_compression_ratio,
+        );
     }
     Ok(())
 }
@@ -301,7 +335,7 @@ fn run_query(command: QueryCommand) -> CliResult<()> {
         ));
     }
     let specimen = specimen_text(command.specimen.as_deref(), command.text)?;
-    let index = Index::load(&command.index)?;
+    let index = Index::load_auto(&command.index)?;
     let options = SearchOptions {
         intent: command.intent.into(),
         max_results: command.limit,
@@ -389,10 +423,11 @@ fn print_calibrated_results(results: &[CalibratedResult]) {
 }
 
 fn run_inspect(command: InspectCommand) -> CliResult<()> {
-    let index = Index::load(&command.index)?;
+    let index = Index::load_auto(&command.index)?;
     let report = InspectReport {
         config: &index.config,
         stats: index.stats(),
+        storage: Index::inspect_storage(&command.index)?,
         documents: index
             .documents()
             .iter()
@@ -411,6 +446,14 @@ fn run_inspect(command: InspectCommand) -> CliResult<()> {
         println!("Normalized tokens: {}", report.stats.normalized_tokens);
         println!("Fingerprints: {}", report.stats.distinct_fingerprints);
         println!("Postings: {}", report.stats.postings);
+        println!("Storage: {:?}", report.storage.format);
+        println!("File bytes: {}", report.storage.file_bytes);
+        println!(
+            "Posting payload: {} / {} bytes ({:.3}x)",
+            report.storage.posting_payload_bytes,
+            report.storage.fixed_posting_bytes,
+            report.storage.posting_compression_ratio,
+        );
         println!(
             "q={} w={} normalization={:?}",
             report.config.qgram_size,

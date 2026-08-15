@@ -81,7 +81,7 @@ fn main() {
 
 fn run() -> CliResult<()> {
     let command = Cli::parse();
-    let index = Index::load(&command.index)?;
+    let index = Index::load_auto(&command.index)?;
     let queries = read_queries(&command.input)?;
     let report = index.search_batch(
         &queries,

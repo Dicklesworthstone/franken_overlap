@@ -47,6 +47,9 @@ All notable changes to FrankenOverlap are recorded here.
 - Immutable segmented indexes with append-only generations and stable 64-bit global document IDs.
 - Atomic tombstones, one-segment-at-a-time search, deterministic cross-segment fusion, and compaction.
 - Segment byte-length/content-hash verification, writer locks, generation checks, and `fo-segment` management CLI.
+- Checksummed `.foidx` v2 storage with document/position delta-varint posting lists.
+- Automatic v1/v2 loading and physical posting-density statistics.
+- Explicit `--storage delta-varint|legacy-fixed` selection in the primary indexing CLI.
 
 ### Changed
 
@@ -65,6 +68,8 @@ All notable changes to FrankenOverlap are recorded here.
 - Multi-query workloads now parallelize across independent specimens without nested parallelism inside sparse search.
 - Sparse work that exceeds the planner budget now receives a deterministic heavy-feature cap before execution.
 - Growing corpora can append immutable segments and compact later instead of rebuilding one monolithic index for every update.
+- `fo index` writes compressed v2 files by default while retaining v1 output for legacy readers.
+- Primary, batch, composite, and planner CLIs accept both v1 and v2 indexes.
 
 ## 0.1.0 - 2026-08-14
 
