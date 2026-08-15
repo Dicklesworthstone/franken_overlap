@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use fo_core::{
-    Index, IndexBuilder, IndexConfig, NormalizationProfile, PunctuationMode, SearchOptions,
-    SpectralOptions, normalize, spectral_scan,
+    CalibratedResult, CalibrationModel, Index, IndexBuilder, IndexConfig, NormalizationProfile,
+    PunctuationMode, SearchIntent, SearchOptions, SearchResult, SpectralOptions, normalize,
+    spectral_scan,
 };
 use rayon::prelude::*;
 use serde::Serialize;
@@ -78,14 +79,34 @@ struct QueryCommand {
     /// Supply the specimen inline.
     #[arg(long, conflicts_with = "specimen")]
     text: Option<String>,
+    /// Select passage discovery, source attribution, or near-duplicate ranking.
+    #[arg(long, value_enum, default_value = "source-attribution")]
+    intent: SearchIntentArg,
     #[arg(short, long, default_value_t = 20)]
     limit: usize,
     #[arg(long, default_value_t = 200)]
     candidates: usize,
     #[arg(long, default_value_t = 50_000)]
     max_postings: usize,
+    #[arg(long, default_value_t = 24)]
+    minimum_matched_tokens: usize,
+    #[arg(long, default_value_t = 0.10)]
+    minimum_query_coverage: f32,
+    #[arg(long, default_value_t = 0.10)]
+    minimum_source_coverage: f32,
+    #[arg(long, default_value_t = 50_000_000)]
+    direct_fallback_work_limit: u64,
+    #[arg(long, default_value_t = 8)]
+    short_query_candidates: usize,
+    /// Minimum hand-designed score retained before optional calibration.
     #[arg(long, default_value_t = 0.35)]
     minimum_similarity: f32,
+    /// Optional fitted CalibrationModel JSON used to rerank the retained hits.
+    #[arg(long)]
+    calibration_model: Option<PathBuf>,
+    /// Minimum calibrated probability retained when --calibration-model is used.
+    #[arg(long, default_value_t = 0.0)]
+    minimum_probability: f64,
     #[arg(long)]
     json: bool,
 }
@@ -135,6 +156,23 @@ impl From<PunctuationArg> for PunctuationMode {
             PunctuationArg::Keep => Self::Keep,
             PunctuationArg::ToSpace => Self::ToSpace,
             PunctuationArg::Drop => Self::Drop,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum SearchIntentArg {
+    AnyPassage,
+    SourceAttribution,
+    NearDuplicate,
+}
+
+impl From<SearchIntentArg> for SearchIntent {
+    fn from(value: SearchIntentArg) -> Self {
+        match value {
+            SearchIntentArg::AnyPassage => Self::AnyPassage,
+            SearchIntentArg::SourceAttribution => Self::SourceAttribution,
+            SearchIntentArg::NearDuplicate => Self::NearDuplicate,
         }
     }
 }
@@ -252,37 +290,102 @@ fn run_index(command: IndexCommand) -> CliResult<()> {
 }
 
 fn run_query(command: QueryCommand) -> CliResult<()> {
+    if !command.minimum_probability.is_finite()
+        || !(0.0..=1.0).contains(&command.minimum_probability)
+    {
+        return Err(invalid_input("--minimum-probability must lie in [0, 1]"));
+    }
+    if command.calibration_model.is_none() && command.minimum_probability > 0.0 {
+        return Err(invalid_input(
+            "--minimum-probability requires --calibration-model",
+        ));
+    }
     let specimen = specimen_text(command.specimen.as_deref(), command.text)?;
     let index = Index::load(&command.index)?;
     let options = SearchOptions {
+        intent: command.intent.into(),
         max_results: command.limit,
         max_candidates: command.candidates,
         max_postings_per_feature: command.max_postings,
+        minimum_matched_tokens: command.minimum_matched_tokens,
+        minimum_query_coverage: command.minimum_query_coverage,
+        minimum_source_coverage: command.minimum_source_coverage,
+        direct_fallback_work_limit: command.direct_fallback_work_limit,
+        short_query_candidates: command.short_query_candidates,
         minimum_similarity: command.minimum_similarity,
         ..SearchOptions::default()
     };
     let results = index.search(&specimen, &options)?;
-    if command.json {
-        println!("{}", serde_json::to_string_pretty(&results)?);
-    } else if results.is_empty() {
-        println!("No matches met the similarity threshold.");
-    } else {
-        for (rank, result) in results.iter().enumerate() {
-            println!(
-                "{}. {} [{}..{}] score={:.4} edit={:.4} coverage={:.4} distance={}",
-                rank + 1,
-                result.path,
-                result.corpus_start,
-                result.corpus_end,
-                result.combined_score,
-                result.edit_similarity,
-                result.anchor_coverage,
-                result.edit_distance
-            );
-            println!("   {}", one_line(&result.matched_text, 240));
+    if let Some(path) = command.calibration_model {
+        let model = read_calibration_model(&path)?;
+        let mut calibrated = model.rerank(&results)?;
+        calibrated.retain(|result| result.probability >= command.minimum_probability);
+        calibrated.truncate(command.limit);
+        if command.json {
+            println!("{}", serde_json::to_string_pretty(&calibrated)?);
+        } else {
+            print_calibrated_results(&calibrated);
         }
+    } else if command.json {
+        println!("{}", serde_json::to_string_pretty(&results)?);
+    } else {
+        print_raw_results(&results);
     }
     Ok(())
+}
+
+fn read_calibration_model(path: &Path) -> CliResult<CalibrationModel> {
+    let model = serde_json::from_slice::<CalibrationModel>(&fs::read(path)?)?;
+    model.validate()?;
+    Ok(model)
+}
+
+fn print_raw_results(results: &[SearchResult]) {
+    if results.is_empty() {
+        println!("No matches met the search thresholds.");
+        return;
+    }
+    for (rank, result) in results.iter().enumerate() {
+        println!(
+            "{}. {} [{}..{}] score={:.4} edit={:.4} query={:.4} source={:.4} chain={:.4} tokens={} expected_fp={:.3e}",
+            rank + 1,
+            result.path,
+            result.corpus_start,
+            result.corpus_end,
+            result.combined_score,
+            result.edit_similarity,
+            result.query_coverage,
+            result.source_coverage,
+            result.chain_consistency,
+            result.matched_tokens,
+            result.estimated_false_matches,
+        );
+        println!("   {}", one_line(&result.matched_text, 240));
+    }
+}
+
+fn print_calibrated_results(results: &[CalibratedResult]) {
+    if results.is_empty() {
+        println!("No matches met the calibrated probability threshold.");
+        return;
+    }
+    for (rank, calibrated) in results.iter().enumerate() {
+        let result = &calibrated.result;
+        println!(
+            "{}. {} [{}..{}] probability={:.4} raw={:.4} edit={:.4} query={:.4} source={:.4} tokens={}",
+            rank + 1,
+            result.path,
+            result.corpus_start,
+            result.corpus_end,
+            calibrated.probability,
+            result.combined_score,
+            result.edit_similarity,
+            result.query_coverage,
+            result.source_coverage,
+            result.matched_tokens,
+        );
+        println!("   {}", one_line(&result.matched_text, 240));
+    }
 }
 
 fn run_inspect(command: InspectCommand) -> CliResult<()> {
