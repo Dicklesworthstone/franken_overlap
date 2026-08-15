@@ -1,9 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path};
 
-use fo_corpus::{CorpusDocument, CorpusManifest, CorpusProvider, atomic_write, sha256_hex, unix_timestamp};
+use fo_corpus::{
+    CorpusDocument, CorpusManifest, CorpusProvider, atomic_write, sha256_hex, unix_timestamp,
+};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -109,7 +111,9 @@ pub fn generate_scenarios(
     let manifest = CorpusManifest::load(corpus_root)?;
     let mut documents = load_documents(corpus_root, &manifest, &options)?;
     if documents.is_empty() {
-        return Err(invalid("no sufficiently long UTF-8 corpus documents were available"));
+        return Err(invalid(
+            "no sufficiently long UTF-8 corpus documents were available",
+        ));
     }
     documents.sort_unstable_by_key(|document| stable_hash(&document.record.id, options.seed));
     let eligible_source_documents = documents.len();
@@ -128,6 +132,7 @@ pub fn generate_scenarios(
             document,
             &relation_key,
             &related,
+            manifest.provider,
             &options,
         ));
     }
@@ -147,15 +152,19 @@ pub fn generate_scenarios(
     for query in &queries {
         let entry = counts.entry(query.profile.clone()).or_default();
         entry.0 += 1;
-        entry.1 += usize::from(query.positive_ids.len() > 1);
+        if query.positive_ids.len() > 1 {
+            entry.1 += 1;
+        }
     }
     let profiles = counts
         .into_iter()
-        .map(|(profile, (queries, multi_positive_queries))| ScenarioProfileCount {
-            profile,
-            queries,
-            multi_positive_queries,
-        })
+        .map(
+            |(profile, (queries, multi_positive_queries))| ScenarioProfileCount {
+                profile,
+                queries,
+                multi_positive_queries,
+            },
+        )
         .collect::<Vec<_>>();
     let multi_positive_queries = queries
         .iter()
@@ -171,7 +180,10 @@ pub fn generate_scenarios(
         selected_source_documents: documents.len(),
         queries: queries.len(),
         multi_positive_queries,
-        relation_groups: relation_groups.values().filter(|group| group.len() > 1).count(),
+        relation_groups: relation_groups
+            .values()
+            .filter(|group| group.len() > 1)
+            .count(),
         profiles,
         query_file: query_output.display().to_string(),
         query_file_sha256: sha256_hex(&bytes),
@@ -256,7 +268,7 @@ fn extract_cik(value: &str) -> Option<String> {
     let start = value.find("CIK")? + 3;
     let digits = value[start..]
         .chars()
-        .take_while(char::is_ascii_digit)
+        .take_while(|character| character.is_ascii_digit())
         .collect::<String>();
     (!digits.is_empty()).then_some(digits)
 }
@@ -265,14 +277,22 @@ fn generate_document_queries(
     document: &LoadedDocument,
     relation_key: &str,
     related: &[String],
+    provider: CorpusProvider,
     options: &ScenarioGenerationOptions,
 ) -> Vec<ScenarioQuery> {
     let width = options.passage_words.min(document.words.len());
-    let windows = document.words.len().saturating_sub(width).saturating_add(1);
+    let windows = document
+        .words
+        .len()
+        .saturating_sub(width)
+        .saturating_add(1);
     let start = if windows <= 1 {
         0
     } else {
-        stable_hash(&document.record.id, options.seed ^ 0x50_41_53_53_41_47_45) as usize
+        stable_hash(
+            &document.record.id,
+            options.seed ^ 0x50_41_53_53_41_47_45,
+        ) as usize
             % windows
     };
     let passage = document.words[start..start + width].to_vec();
@@ -312,8 +332,11 @@ fn generate_document_queries(
             vec![document.record.id.clone()]
         };
         let mut metadata = BTreeMap::new();
-        metadata.insert("source_relative_path".to_owned(), document.record.relative_path.clone());
-        metadata.insert("provider".to_owned(), format!("{:?}", document_provider_hint(document)));
+        metadata.insert(
+            "source_relative_path".to_owned(),
+            document.record.relative_path.clone(),
+        );
+        metadata.insert("provider".to_owned(), provider_name(provider).to_owned());
         metadata.insert("passage_start_word".to_owned(), start.to_string());
         metadata.insert("passage_words".to_owned(), width.to_string());
         if let Some(section) = document.record.metadata.get("section_title") {
@@ -336,13 +359,10 @@ fn generate_document_queries(
     output
 }
 
-fn document_provider_hint(document: &LoadedDocument) -> &'static str {
-    if document.record.metadata.contains_key("cik")
-        || document.record.id.starts_with("CIK")
-    {
-        "sec_edgar_10k"
-    } else {
-        "project_gutenberg"
+const fn provider_name(provider: CorpusProvider) -> &'static str {
+    match provider {
+        CorpusProvider::ProjectGutenberg => "project_gutenberg",
+        CorpusProvider::SecEdgar10K => "sec_edgar_10k",
     }
 }
 
@@ -495,9 +515,14 @@ mod tests {
 
     #[test]
     fn transformations_remain_nonempty_and_deterministic() {
-        let words = (0..96).map(|index| format!("word{index}")).collect::<Vec<_>>();
+        let words = (0..96)
+            .map(|index| format!("word{index}"))
+            .collect::<Vec<_>>();
         assert_eq!(format_drift(&words), format_drift(&words));
-        assert_eq!(insertion_deletion(&words, 7), insertion_deletion(&words, 7));
+        assert_eq!(
+            insertion_deletion(&words, 7),
+            insertion_deletion(&words, 7)
+        );
         assert!(!ocr_noise(&words.join(" ")).is_empty());
         assert!(!reordered(&words).is_empty());
     }
