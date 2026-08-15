@@ -5,10 +5,12 @@
 mod evidence_bundle;
 
 use std::error::Error;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use evidence_bundle::{BundleOptions, render_evidence_bundle};
+use fo_corpus::sha256_hex;
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -50,6 +52,7 @@ fn main() {
 
 fn run() -> CliResult<()> {
     let command = Cli::parse();
+    validate_proof_receipts(&command.corpus_root, &command.queries, &command.proof_report)?;
     let report = render_evidence_bundle(
         &command.corpus_root,
         &command.queries,
@@ -78,4 +81,41 @@ fn run() -> CliResult<()> {
         println!("Artifact manifest:        {}", report.artifacts_json);
     }
     Ok(())
+}
+
+fn validate_proof_receipts(
+    corpus_root: &Path,
+    queries: &Path,
+    proof_report: &Path,
+) -> CliResult<()> {
+    let proof = serde_json::from_slice::<serde_json::Value>(&fs::read(proof_report)?)?;
+    let expected_manifest = proof
+        .get("corpus_manifest_sha256")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| invalid("proof report has no corpus_manifest_sha256"))?;
+    let expected_queries = proof
+        .get("query_file_sha256")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| invalid("proof report has no query_file_sha256"))?;
+    let manifest_path = corpus_root.join(fo_corpus::MANIFEST_FILENAME);
+    let observed_manifest = sha256_hex(&fs::read(&manifest_path)?);
+    let observed_queries = sha256_hex(&fs::read(queries)?);
+    if observed_manifest != expected_manifest {
+        return Err(invalid(format!(
+            "corpus manifest digest mismatch: proof expects {expected_manifest}, observed {observed_manifest}"
+        )));
+    }
+    if observed_queries != expected_queries {
+        return Err(invalid(format!(
+            "query digest mismatch: proof expects {expected_queries}, observed {observed_queries}"
+        )));
+    }
+    Ok(())
+}
+
+fn invalid(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
+    Box::new(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        message.into(),
+    ))
 }
