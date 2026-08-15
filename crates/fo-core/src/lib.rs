@@ -5,6 +5,7 @@ mod chain;
 mod composite;
 mod error;
 mod fingerprint;
+mod grouped_metrics;
 mod index;
 pub mod metrics;
 mod model;
@@ -26,6 +27,11 @@ pub use composite::{
 };
 pub use error::{FoError, Result};
 pub use fingerprint::{Feature, Fingerprint, qgram_hashes};
+pub use grouped_metrics::{
+    AtKMetric, ConfidenceInterval, GroupedEvaluationOptions, GroupedEvaluationReport,
+    GroupedLabeledScore, ThresholdConstraints, grouped_evaluation_report,
+    select_operating_point,
+};
 pub use index::{Document, Index, IndexBuilder, IndexEntry};
 pub use metrics::{
     EvaluationOptions, LabeledScore, PrecisionRecallPoint, PrecisionRecallReport,
@@ -41,8 +47,8 @@ pub use multiview::{
 };
 pub use normalize::{NormalizedText, normalize};
 pub use ranking::{
-    GroupedFeedbackExample, PairwiseRankingOptions, RankedResult, RankingComparison, RankingModel,
-    RANKING_FEATURE_COUNT, RANKING_SCHEMA_VERSION, mine_hard_negatives,
+    GroupedFeedbackExample, PairwiseRankingOptions, RANKING_FEATURE_COUNT,
+    RANKING_SCHEMA_VERSION, RankedResult, RankingComparison, RankingModel, mine_hard_negatives,
     ranking_evidence_vector, ranking_feature_names,
 };
 pub use spectral::{SpectralOptions, SpectralPeak, spectral_scan};
