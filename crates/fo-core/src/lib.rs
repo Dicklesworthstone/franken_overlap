@@ -4,6 +4,7 @@ mod chain;
 mod error;
 mod fingerprint;
 mod index;
+pub mod metrics;
 mod model;
 mod normalize;
 mod search;
@@ -15,6 +16,10 @@ pub use chain::{Anchor, AnchorChain, ChainOptions, chain_anchors};
 pub use error::{FoError, Result};
 pub use fingerprint::{Feature, Fingerprint, qgram_hashes};
 pub use index::{Document, Index, IndexBuilder, IndexEntry};
+pub use metrics::{
+    EvaluationOptions, LabeledScore, PrecisionRecallPoint, PrecisionRecallReport,
+    precision_recall_report,
+};
 pub use model::{
     IndexConfig, IndexStats, NormalizationProfile, Posting, PunctuationMode, SearchOptions,
     SearchResult,
