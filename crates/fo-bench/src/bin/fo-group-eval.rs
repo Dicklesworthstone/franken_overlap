@@ -175,7 +175,7 @@ fn print_output(output: &Output) {
             interval.upper
         );
     }
-    if let Some(point) = output.operating_point {
+    if let Some(point) = &output.operating_point {
         println!("Selected threshold:          {:.6}", point.threshold);
         println!("  precision:                 {:.6}", point.precision);
         println!("  recall:                    {:.6}", point.recall);
