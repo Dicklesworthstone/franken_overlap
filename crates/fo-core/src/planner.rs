@@ -101,6 +101,7 @@ pub struct QueryPlan {
     pub suppressed_fraction: f64,
     pub estimated_posting_pairs: u64,
     pub estimated_diagonal_votes: u64,
+    pub sparse_budget_exceeded: bool,
     pub maximum_posting_list: usize,
     pub mean_retained_posting_list: f64,
     pub suggested_max_postings_per_feature: usize,
@@ -142,16 +143,7 @@ impl Index {
         }
         let distinct_tokens = token_counts.len();
         let token_entropy_bits = shannon_entropy(&token_counts, query.len());
-        let maximum_entropy = if distinct_tokens > 1 {
-            (distinct_tokens as f64).log2()
-        } else {
-            0.0
-        };
-        let token_entropy_ratio = if maximum_entropy > 0.0 {
-            (token_entropy_bits / maximum_entropy).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
+        let token_entropy_ratio = sequence_entropy_ratio(token_entropy_bits, query.len());
         let repetition_fraction =
             (1.0 - distinct_tokens as f64 / query.len().max(1) as f64).clamp(0.0, 1.0);
 
@@ -200,15 +192,13 @@ impl Index {
         } else {
             retained_posting_sum as f64 / retained_distinct as f64
         };
-        let average_occurrences = retained_features.max(1) / retained_distinct.max(1);
         let suggested_max_postings_per_feature = if retained_features == 0 {
             search.max_postings_per_feature
         } else {
             usize::try_from(
                 planner
                     .maximum_sparse_posting_pairs
-                    .saturating_div(retained_features as u64)
-                    .saturating_mul(average_occurrences.max(1) as u64),
+                    .saturating_div(retained_features as u64),
             )
             .unwrap_or(usize::MAX)
             .clamp(1, search.max_postings_per_feature)
@@ -227,10 +217,10 @@ impl Index {
 
         let route = if short {
             AdaptiveRoute::ShortDirect
-        } else if insufficient_sparse_evidence || sparse_budget_exceeded {
-            AdaptiveRoute::BoundedSparse
         } else if composite_signal {
             AdaptiveRoute::Composite
+        } else if insufficient_sparse_evidence || sparse_budget_exceeded {
+            AdaptiveRoute::BoundedSparse
         } else {
             AdaptiveRoute::Sparse
         };
@@ -279,6 +269,7 @@ impl Index {
             suppressed_fraction,
             estimated_posting_pairs,
             estimated_diagonal_votes,
+            sparse_budget_exceeded,
             maximum_posting_list,
             mean_retained_posting_list,
             suggested_max_postings_per_feature,
@@ -296,7 +287,7 @@ impl Index {
     ) -> Result<AdaptiveSearchReport> {
         let plan = self.plan_query(specimen, search, planner)?;
         let mut effective = search.clone();
-        if plan.route == AdaptiveRoute::BoundedSparse {
+        if plan.sparse_budget_exceeded || plan.route == AdaptiveRoute::BoundedSparse {
             effective.max_postings_per_feature = effective
                 .max_postings_per_feature
                 .min(plan.suggested_max_postings_per_feature);
@@ -332,6 +323,14 @@ fn shannon_entropy(counts: &HashMap<u32, usize>, total: usize) -> f64 {
             -probability * probability.log2()
         })
         .sum()
+}
+
+fn sequence_entropy_ratio(entropy: f64, total: usize) -> f64 {
+    if total <= 1 {
+        0.0
+    } else {
+        (entropy / (total as f64).log2()).clamp(0.0, 1.0)
+    }
 }
 
 fn fraction(numerator: usize, denominator: usize) -> f64 {
@@ -379,7 +378,11 @@ mod tests {
     #[test]
     fn short_queries_route_to_direct_search() {
         let plan = index()
-            .plan_query("signal", &SearchOptions::default(), QueryPlannerOptions::default())
+            .plan_query(
+                "signal",
+                &SearchOptions::default(),
+                QueryPlannerOptions::default(),
+            )
             .expect("plan");
         assert_eq!(plan.route, AdaptiveRoute::ShortDirect);
     }
@@ -406,11 +409,14 @@ mod tests {
             )
             .expect("plan");
         assert_eq!(plan.route, AdaptiveRoute::Composite);
-        assert!(plan.advisories.contains(&QueryAdvisory::CompositeRecommended));
+        assert!(
+            plan.advisories
+                .contains(&QueryAdvisory::CompositeRecommended)
+        );
     }
 
     #[test]
-    fn repeated_queries_are_marked_low_entropy() {
+    fn repeated_queries_are_marked_low_entropy_and_repetitive() {
         let specimen = "signal ".repeat(80);
         let plan = index()
             .plan_query(
@@ -420,6 +426,7 @@ mod tests {
             )
             .expect("plan");
         assert!(plan.advisories.contains(&QueryAdvisory::LowEntropy));
+        assert!(plan.advisories.contains(&QueryAdvisory::HighRepetition));
         assert!(plan.repetition_fraction > 0.90);
     }
 
@@ -451,6 +458,11 @@ mod tests {
             )
             .expect("adaptive search");
         assert_eq!(report.plan.route, AdaptiveRoute::Composite);
-        assert!(report.matches.iter().all(|item| matches!(item, AdaptiveMatch::Composite(_))));
+        assert!(
+            report
+                .matches
+                .iter()
+                .all(|item| matches!(item, AdaptiveMatch::Composite(_)))
+        );
     }
 }
