@@ -6,9 +6,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, ValueEnum};
-use fo_core::{
-    CompositeSearchOptions, Index, SearchIntent, SearchOptions,
-};
+use fo_core::{CompositeSearchOptions, Index, SearchIntent, SearchOptions};
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -75,7 +73,7 @@ fn main() {
 fn run() -> CliResult<()> {
     let command = Cli::parse();
     let specimen = specimen_text(command.specimen.as_deref(), command.text)?;
-    let index = Index::load(&command.index)?;
+    let index = Index::load_auto(&command.index)?;
     let results = index.search_composite(
         &specimen,
         &SearchOptions {
