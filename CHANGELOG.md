@@ -38,6 +38,9 @@ All notable changes to FrankenOverlap are recorded here.
 - Identical-specimen deduplication, total input budgets, per-query error isolation, and fail-fast control.
 - `fo-batch` NDJSON/JSON CLI and batch execution report.
 - Provenance-preserving Unicode normalization with normalized-token to original UTF-8 byte-range mapping.
+- Native PAN macro/micro precision, recall, F1, granularity, and PlagDet evaluation.
+- PAN XML parsing and detection output without Python or NumPy dependencies.
+- `fo-pan` end-to-end corpus runner using original-coordinate provenance for span evaluation.
 
 ### Changed
 
