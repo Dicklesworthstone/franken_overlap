@@ -105,6 +105,7 @@ pub struct SearchOptions {
     pub max_results: usize,
     pub max_candidates: usize,
     pub max_postings_per_feature: usize,
+    pub maximum_posting_pairs: u64,
     pub minimum_anchor_hits: u32,
     pub diagonal_bin_width: i64,
     pub candidate_suppression_bins: i64,
@@ -129,6 +130,7 @@ impl Default for SearchOptions {
             max_results: 20,
             max_candidates: 200,
             max_postings_per_feature: 50_000,
+            maximum_posting_pairs: 25_000_000,
             minimum_anchor_hits: 2,
             diagonal_bin_width: 4,
             candidate_suppression_bins: 4,
@@ -156,6 +158,7 @@ impl SearchOptions {
             ));
         }
         if self.max_postings_per_feature == 0
+            || self.maximum_posting_pairs == 0
             || self.minimum_anchor_hits == 0
             || self.maximum_anchors_per_candidate == 0
             || self.predecessor_lookback == 0
@@ -163,7 +166,7 @@ impl SearchOptions {
             || self.direct_fallback_work_limit == 0
         {
             return Err(FoError::InvalidConfig(
-                "posting, anchor, predecessor, fallback-work, and short-query limits must be positive"
+                "posting, posting-pair, anchor, predecessor, fallback-work, and short-query limits must be positive"
                     .to_owned(),
             ));
         }
