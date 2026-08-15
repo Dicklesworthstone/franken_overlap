@@ -1,0 +1,22 @@
+[package]
+name = "fo-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file = "../../LICENSE"
+authors.workspace = true
+repository.workspace = true
+description = "Evaluation and benchmark utilities for FrankenOverlap"
+publish = false
+
+[[bin]]
+name = "fo-bench"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+fo-core.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
