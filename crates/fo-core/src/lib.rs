@@ -21,8 +21,8 @@ pub use metrics::{
     precision_recall_report,
 };
 pub use model::{
-    IndexConfig, IndexStats, NormalizationProfile, Posting, PunctuationMode, SearchOptions,
-    SearchResult,
+    IndexConfig, IndexStats, NormalizationProfile, Posting, PunctuationMode, SearchIntent,
+    SearchOptions, SearchResult,
 };
 pub use normalize::{NormalizedText, normalize};
 pub use spectral::{SpectralOptions, SpectralPeak, spectral_scan};
