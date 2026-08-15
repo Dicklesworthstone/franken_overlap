@@ -14,7 +14,7 @@ mod retrieval_baselines;
 #[path = "../scenario_benchmark.rs"]
 mod scenario_benchmark;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
