@@ -105,7 +105,7 @@ struct QueryCommand {
     #[arg(long)]
     calibration_model: Option<PathBuf>,
     /// Minimum calibrated probability retained when --calibration-model is used.
-    #[arg(long, default_value_t = 0.0, requires = "calibration_model")]
+    #[arg(long, default_value_t = 0.0)]
     minimum_probability: f64,
     #[arg(long)]
     json: bool,
@@ -294,6 +294,11 @@ fn run_query(command: QueryCommand) -> CliResult<()> {
         || !(0.0..=1.0).contains(&command.minimum_probability)
     {
         return Err(invalid_input("--minimum-probability must lie in [0, 1]"));
+    }
+    if command.calibration_model.is_none() && command.minimum_probability > 0.0 {
+        return Err(invalid_input(
+            "--minimum-probability requires --calibration-model",
+        ));
     }
     let specimen = specimen_text(command.specimen.as_deref(), command.text)?;
     let index = Index::load(&command.index)?;
