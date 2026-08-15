@@ -136,7 +136,7 @@ For q-gram length `q`, every normalized token window receives two independent ro
 
 ### 3. Perform sparse cross-correlation
 
-A specimen fingerprint at position `q` and corpus occurrence at position `c` vote for diagonal `d = c - q`. Votes are grouped by document and quantized diagonal. Rare fingerprints receive greater inverse-document-frequency weight; excessive posting lists are suppressed.
+A specimen fingerprint at position `q` and corpus occurrence at position `c` vote for diagonal `d = c - q`. Votes are grouped by document and quantized diagonal. Rare fingerprnts receive greater inverse-document-frequency weight; excessive posting lists are suppressed.
 
 This is cross-correlation evaluated only at nonzero equality products. For a static corpus it usually beats an FFT because the query does not need to read unrelated corpus text at all.
 
@@ -170,7 +170,7 @@ All components are returned separately so downstream applications can replace th
 For repetition `r`, every token `x` receives a bucket `b_r(x)` and sign `σ_r(x)`. Channel correlation estimates positional equality:
 
 ```text
-X[r,b,i] = σ_r(T[i]) when b_r(T[i]) = b, otherwise 0
+X[r,b,iB = σ_r(T[i]) when b_r(T[i]) = b, otherwise 0
 Y[r,b,j] = σ_r(P[j]) when b_r(P[j]) = b, otherwise 0
 ```
 
@@ -236,19 +236,21 @@ These are sequencing limits, not scope cuts. The intended terminal system is des
 
 ## Validation
 
+FrankenOverlap uses the moving latest Rust nightly selected by `rust-toolchain.toml` and validates on owner-controlled machines rather than GitHub Actions.
+
+During development:
+
 ```bash
-cargo check --workspace --all-targets
-cargo test --workspace
-cargo clippy --workspace --all-targets
-cargo test -p fo-core --features frankenscipy
+./scripts/ci-local.sh quick
 ```
 
-Before a tagged release, additionally require `cargo fmt --all -- --check` and promote Clippy
-warnings to errors with `cargo clippy --workspace --all-targets -- -D warnings`.
+Before merging or releasing, update only nightly and run the complete suite:
 
-The initial construction environment did not contain a Rust toolchain, so the exact local checks
-and the CI handoff are recorded in [`VALIDATION.md`](VALIDATION.md). Compilation and conformance in
-GitHub Actions are the authoritative build evidence.
+```bash
+FO_UPDATE_NIGHTLY=1 ./scripts/ci-local.sh full
+```
+
+Set `FO_USE_RCH=1` to send Cargo compilation and tests through an `rch` worker. See [`docs/LOCAL_CI.md`](docs/LOCAL_CI.md) and [`VALIDATION.md`](VALIDATION.md).
 
 The binary format is fail-closed: bad magic, unknown versions or flags, unsorted dictionaries, invalid postings, inconsistent document frequencies, impossible sizes, and trailing bytes are rejected.
 
