@@ -25,6 +25,9 @@ All notable changes to FrankenOverlap are recorded here.
 - Deterministic hard-negative mining and the `fo-rank` fit, compare, mine, and rerank CLI.
 - Exact positional-equality dense scoring below the configured direct-work crossover.
 - Unit-circle phase-sketch FFT correlation requiring two channels per repetition instead of one channel per bucket.
+- Persisted multi-view indexes spanning short, balanced, and selective q-gram scales.
+- Cross-view span consensus with support ratios, disagreement penalties, weighted evidence, and balanced/high-recall/high-precision presets.
+- `fo-multiview` build, query, and inspect CLI.
 
 ### Changed
 
@@ -37,6 +40,7 @@ All notable changes to FrankenOverlap are recorded here.
 - Removed the obsolete stable/MSRV recovery wrapper; repository validation remains nightly-first.
 - Dense direct scans are now exact and independent of sketch parameters.
 - Default FFT channel correlations fall from repetitions × buckets to 2 × repetitions.
+- Multi-view consensus penalizes single-scale accidents while retaining a dedicated high-recall preset for noisy text.
 
 ## 0.1.0 - 2026-08-14
 
