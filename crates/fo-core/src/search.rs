@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::{
     Anchor, ChainOptions, Feature, Fingerprint, FoError, Index, Result, SearchIntent, SearchOptions,
-    SearchResult, chain_anchors, global_levenshtein, normalize, qgram_hashes,
-    semi_global_banded, winnow,
+    SearchResult, chain_anchors, global_levenshtein, myers_infix_candidates, normalize,
+    qgram_hashes, semi_global_banded, winnow,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -363,13 +363,7 @@ impl Index {
                 continue;
             }
 
-            let exact = text
-                .windows(query.len())
-                .enumerate()
-                .filter(|(_, window)| *window == query)
-                .map(|(start, _)| start)
-                .take(options.short_query_candidates)
-                .collect::<Vec<_>>();
+            let exact = exact_occurrences(query, text, options.short_query_candidates);
             if !exact.is_empty() {
                 for start in exact {
                     let result = direct_result(
@@ -389,62 +383,43 @@ impl Index {
                 continue;
             }
 
-            let windows = text.len() - query.len() + 1;
-            let work = (windows as u128).saturating_mul(query.len() as u128);
-            if work > remaining_work {
-                continue;
-            }
-            remaining_work -= work;
-            let mut local = Vec::<(usize, usize)>::new();
-            for start in 0..windows {
-                let mismatches = query
-                    .iter()
-                    .zip(&text[start..start + query.len()])
-                    .filter(|(left, right)| left != right)
-                    .count();
-                if local.len() < options.short_query_candidates {
-                    local.push((mismatches, start));
-                    local.sort_unstable();
-                } else if (mismatches, start)
-                    < local[options.short_query_candidates.saturating_sub(1)]
-                {
-                    let last = options.short_query_candidates - 1;
-                    local[last] = (mismatches, start);
-                    local.sort_unstable();
-                }
-            }
-            for (mismatches, predicted_start) in local {
-                let window_start = predicted_start.saturating_sub(options.verification_slack);
-                let window_end = predicted_start
-                    .saturating_add(query.len())
-                    .saturating_add(
-                        options
-                            .verification_slack
-                            .min(query.len().saturating_mul(2).saturating_add(8)),
-                    )
-                    .min(text.len());
-                let alignment = semi_global_banded(
-                    query,
-                    &text[window_start..window_end],
-                    predicted_start.saturating_sub(window_start),
-                    options.verification_band.max(query.len().saturating_add(8)),
-                );
-                let corpus_start = window_start + alignment.text_start;
-                let corpus_end = window_start + alignment.text_end;
-                if corpus_start >= corpus_end {
+            let local = if query.len() <= 64 {
+                let work = text.len() as u128;
+                if work > remaining_work {
                     continue;
                 }
-                let hamming_similarity =
-                    (1.0 - mismatches as f32 / query.len().max(1) as f32).clamp(0.0, 1.0);
-                let similarity = alignment.similarity.max(hamming_similarity * 0.95);
-                let result = direct_result(
+                remaining_work -= work;
+                myers_infix_candidates(query, text, options.short_query_candidates)
+                    .into_iter()
+                    .map(|candidate| {
+                        (
+                            candidate.distance,
+                            candidate.end.saturating_sub(query.len()),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                let samples = query.len().min(16);
+                let windows = text.len() - query.len() + 1;
+                let work = (windows as u128).saturating_mul(samples as u128);
+                if work > remaining_work {
+                    continue;
+                }
+                remaining_work -= work;
+                sampled_hamming_candidates(
+                    query,
+                    text,
+                    options.short_query_candidates,
+                    samples,
+                )
+            };
+
+            for (seed_distance, predicted_start) in local {
+                let result = verify_short_candidate(
                     document,
                     query,
-                    corpus_start,
-                    corpus_end,
-                    alignment.distance,
-                    similarity,
-                    1.0,
+                    predicted_start,
+                    seed_distance,
                     options,
                 );
                 if direct_result_passes_floors(&result, query.len(), options) {
@@ -457,6 +432,124 @@ impl Index {
     }
 }
 
+fn exact_occurrences(pattern: &[u32], text: &[u32], maximum: usize) -> Vec<usize> {
+    if pattern.is_empty() || text.len() < pattern.len() || maximum == 0 {
+        return Vec::new();
+    }
+    let mut prefix = vec![0usize; pattern.len()];
+    for position in 1..pattern.len() {
+        let mut length = prefix[position - 1];
+        while length > 0 && pattern[position] != pattern[length] {
+            length = prefix[length - 1];
+        }
+        if pattern[position] == pattern[length] {
+            length += 1;
+        }
+        prefix[position] = length;
+    }
+
+    let mut matched = 0usize;
+    let mut occurrences = Vec::with_capacity(maximum);
+    for (position, &token) in text.iter().enumerate() {
+        while matched > 0 && token != pattern[matched] {
+            matched = prefix[matched - 1];
+        }
+        if token == pattern[matched] {
+            matched += 1;
+        }
+        if matched == pattern.len() {
+            occurrences.push(position + 1 - pattern.len());
+            if occurrences.len() >= maximum {
+                break;
+            }
+            matched = prefix[matched - 1];
+        }
+    }
+    occurrences
+}
+
+fn sampled_hamming_candidates(
+    pattern: &[u32],
+    text: &[u32],
+    maximum: usize,
+    sample_count: usize,
+) -> Vec<(usize, usize)> {
+    if maximum == 0 || sample_count == 0 || text.len() < pattern.len() {
+        return Vec::new();
+    }
+    let samples = sample_positions(pattern.len(), sample_count);
+    let windows = text.len() - pattern.len() + 1;
+    let mut candidates = Vec::<(usize, usize)>::with_capacity(maximum);
+    for start in 0..windows {
+        let mismatches = samples
+            .iter()
+            .filter(|&&position| pattern[position] != text[start + position])
+            .count();
+        retain_seed(&mut candidates, (mismatches, start), maximum);
+    }
+    candidates
+}
+
+fn sample_positions(length: usize, count: usize) -> Vec<usize> {
+    let count = count.min(length).max(1);
+    if count == 1 {
+        return vec![length / 2];
+    }
+    let last = length - 1;
+    let mut positions = (0..count)
+        .map(|index| index.saturating_mul(last) / (count - 1))
+        .collect::<Vec<_>>();
+    positions.dedup();
+    positions
+}
+
+fn retain_seed(candidates: &mut Vec<(usize, usize)>, candidate: (usize, usize), maximum: usize) {
+    if candidates.len() < maximum {
+        candidates.push(candidate);
+        candidates.sort_unstable();
+    } else if candidate < candidates[maximum - 1] {
+        candidates[maximum - 1] = candidate;
+        candidates.sort_unstable();
+    }
+}
+
+fn verify_short_candidate(
+    document: &crate::Document,
+    query: &[u32],
+    predicted_start: usize,
+    seed_distance: usize,
+    options: &SearchOptions,
+) -> SearchResult {
+    let text = &document.normalized.tokens;
+    let adaptive_slack = options
+        .verification_slack
+        .max(seed_distance.saturating_mul(2).saturating_add(4));
+    let window_start = predicted_start.saturating_sub(adaptive_slack);
+    let window_end = predicted_start
+        .saturating_add(query.len())
+        .saturating_add(adaptive_slack)
+        .min(text.len());
+    let alignment = semi_global_banded(
+        query,
+        &text[window_start..window_end],
+        predicted_start.saturating_sub(window_start),
+        options.verification_band.max(seed_distance.saturating_add(8)),
+    );
+    let corpus_start = window_start + alignment.text_start;
+    let corpus_end = window_start + alignment.text_end;
+    direct_result(
+        document,
+        query,
+        corpus_start,
+        corpus_end,
+        alignment.distance,
+        alignment.similarity,
+        1.0,
+        options,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 fn direct_result(
     document: &crate::Document,
     query: &[u32],
@@ -522,7 +615,8 @@ fn direct_result_passes_floors(
     query_length: usize,
     options: &SearchOptions,
 ) -> bool {
-    result.matched_tokens >= options.minimum_matched_tokens.min(query_length)
+    result.corpus_start < result.corpus_end
+        && result.matched_tokens >= options.minimum_matched_tokens.min(query_length)
         && passes_intent_coverage(options, result.query_coverage, result.source_coverage)
         && result.combined_score >= options.minimum_similarity
 }
@@ -556,8 +650,7 @@ fn score_evidence(
 ) -> f32 {
     let edit_similarity = edit_similarity.clamp(0.0, 1.0);
     let length_factor = (1.0 - (-(matched_tokens as f32) / 32.0).exp()).clamp(0.0, 1.0);
-    let evidence_confidence =
-        (1.0 / (1.0 + estimated_false_matches.max(0.0))) as f32;
+    let evidence_confidence = (1.0 / (1.0 + estimated_false_matches.max(0.0))) as f32;
     match intent {
         SearchIntent::AnyPassage => {
             let base = 0.58 * edit_similarity
@@ -578,8 +671,7 @@ fn score_evidence(
         }
         SearchIntent::NearDuplicate => {
             let coverage = if query_coverage + source_coverage > 0.0 {
-                2.0 * query_coverage * source_coverage
-                    / (query_coverage + source_coverage)
+                2.0 * query_coverage * source_coverage / (query_coverage + source_coverage)
             } else {
                 0.0
             };
@@ -591,11 +683,7 @@ fn score_evidence(
     }
 }
 
-fn diagonal_consistency(
-    anchors: &[Anchor],
-    median_diagonal: i64,
-    bin_width: i64,
-) -> f32 {
+fn diagonal_consistency(anchors: &[Anchor], median_diagonal: i64, bin_width: i64) -> f32 {
     if anchors.is_empty() {
         return 0.0;
     }
@@ -695,6 +783,7 @@ fn rank_and_deduplicate(results: &mut Vec<SearchResult>, max_results: usize) {
 
 #[cfg(test)]
 mod tests {
+    use super::{exact_occurrences, sampled_hamming_candidates};
     use crate::{IndexBuilder, IndexConfig, SearchIntent, SearchOptions};
 
     #[test]
@@ -809,5 +898,47 @@ mod tests {
             )
             .expect("passage search");
         assert!(!passage.is_empty());
+    }
+
+    #[test]
+    fn kmp_finds_overlapping_exact_occurrences() {
+        let pattern = vec![1, 1];
+        let text = vec![1, 1, 1, 1];
+        assert_eq!(exact_occurrences(&pattern, &text, 10), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn sampled_candidates_preserve_exact_window() {
+        let pattern = (0..80).collect::<Vec<_>>();
+        let mut text = vec![999; 100];
+        text.extend_from_slice(&pattern);
+        text.extend_from_slice(&[999; 100]);
+        let candidates = sampled_hamming_candidates(&pattern, &text, 4, 16);
+        assert!(candidates.iter().any(|&(distance, start)| distance == 0 && start == 100));
+    }
+
+    #[test]
+    fn myers_short_fallback_handles_insertion() {
+        let config = IndexConfig {
+            qgram_size: 32,
+            ..IndexConfig::default()
+        };
+        let mut builder = IndexBuilder::new(config).expect("builder");
+        builder
+            .add_document("a", "prefix abcXdef suffix")
+            .expect("add");
+        let hits = builder
+            .build()
+            .expect("index")
+            .search(
+                "abcdef",
+                &SearchOptions {
+                    minimum_similarity: 0.30,
+                    ..SearchOptions::default()
+                },
+            )
+            .expect("search");
+        assert!(!hits.is_empty());
+        assert_eq!(hits[0].edit_distance, 1);
     }
 }
