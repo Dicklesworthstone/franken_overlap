@@ -225,7 +225,7 @@ pub struct SearchResult {
     pub matched_text: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexStats {
     pub documents: usize,
     pub normalized_tokens: usize,

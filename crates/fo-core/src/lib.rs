@@ -18,6 +18,7 @@ mod planner;
 mod provenance;
 mod ranking;
 mod search;
+mod segmented;
 pub mod spectral;
 mod verify;
 mod winnow;
@@ -65,6 +66,11 @@ pub use ranking::{
     GroupedFeedbackExample, PairwiseRankingOptions, RANKING_FEATURE_COUNT,
     RANKING_SCHEMA_VERSION, RankedResult, RankingComparison, RankingModel, mine_hard_negatives,
     ranking_evidence_vector, ranking_feature_names,
+};
+pub use segmented::{
+    SegmentAppendReport, SegmentCompactionReport, SegmentDeleteReport, SegmentDescriptor,
+    SegmentDocumentInput, SegmentDocumentRecord, SegmentVerificationReport, SegmentedIndex,
+    SegmentedIndexStats, SegmentedManifest, SegmentedSearchResult,
 };
 pub use spectral::{SpectralOptions, SpectralPeak, spectral_scan};
 pub use verify::{

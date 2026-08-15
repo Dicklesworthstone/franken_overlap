@@ -44,6 +44,9 @@ All notable changes to FrankenOverlap are recorded here.
 - Adaptive query diagnostics covering entropy, repetition, feature retention, heavy-feature loss, and exact posting-pair work.
 - Deterministic ordinary, bounded-sparse, and composite route execution through `search_adaptive`.
 - `fo-plan` CLI with structured multiview and dense-route advisories.
+- Immutable segmented indexes with append-only generations and stable 64-bit global document IDs.
+- Atomic tombstones, one-segment-at-a-time search, deterministic cross-segment fusion, and compaction.
+- Segment byte-length/content-hash verification, writer locks, generation checks, and `fo-segment` management CLI.
 
 ### Changed
 
@@ -61,6 +64,7 @@ All notable changes to FrankenOverlap are recorded here.
 - Feedback acquisition now targets the current decision boundary and newly discovered failure modes instead of repeatedly sampling easy examples.
 - Multi-query workloads now parallelize across independent specimens without nested parallelism inside sparse search.
 - Sparse work that exceeds the planner budget now receives a deterministic heavy-feature cap before execution.
+- Growing corpora can append immutable segments and compact later instead of rebuilding one monolithic index for every update.
 
 ## 0.1.0 - 2026-08-14
 
