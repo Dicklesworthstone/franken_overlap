@@ -88,8 +88,20 @@ pub struct Posting {
     pub position: u32,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchIntent {
+    AnyPassage,
+    #[default]
+    SourceAttribution,
+    NearDuplicate,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SearchOptions {
+    #[serde(default)]
+    pub intent: SearchIntent,
     pub max_results: usize,
     pub max_candidates: usize,
     pub max_postings_per_feature: usize,
@@ -102,12 +114,18 @@ pub struct SearchOptions {
     pub maximum_chain_gap: u32,
     pub verification_slack: usize,
     pub verification_band: usize,
+    pub minimum_matched_tokens: usize,
+    pub minimum_query_coverage: f32,
+    pub minimum_source_coverage: f32,
+    pub direct_fallback_work_limit: u64,
+    pub short_query_candidates: usize,
     pub minimum_similarity: f32,
 }
 
 impl Default for SearchOptions {
     fn default() -> Self {
         Self {
+            intent: SearchIntent::SourceAttribution,
             max_results: 20,
             max_candidates: 200,
             max_postings_per_feature: 50_000,
@@ -120,6 +138,11 @@ impl Default for SearchOptions {
             maximum_chain_gap: 8192,
             verification_slack: 192,
             verification_band: 256,
+            minimum_matched_tokens: 24,
+            minimum_query_coverage: 0.10,
+            minimum_source_coverage: 0.10,
+            direct_fallback_work_limit: 50_000_000,
+            short_query_candidates: 8,
             minimum_similarity: 0.35,
         }
     }
@@ -136,9 +159,12 @@ impl SearchOptions {
             || self.minimum_anchor_hits == 0
             || self.maximum_anchors_per_candidate == 0
             || self.predecessor_lookback == 0
+            || self.short_query_candidates == 0
+            || self.direct_fallback_work_limit == 0
         {
             return Err(FoError::InvalidConfig(
-                "posting, anchor, and predecessor limits must be positive".to_owned(),
+                "posting, anchor, predecessor, fallback-work, and short-query limits must be positive"
+                    .to_owned(),
             ));
         }
         if self.diagonal_bin_width <= 0 {
@@ -152,10 +178,16 @@ impl SearchOptions {
                     .to_owned(),
             ));
         }
-        if !(0.0..=1.0).contains(&self.minimum_similarity) {
-            return Err(FoError::InvalidConfig(
-                "minimum_similarity must lie in [0, 1]".to_owned(),
-            ));
+        for (name, value) in [
+            ("minimum_query_coverage", self.minimum_query_coverage),
+            ("minimum_source_coverage", self.minimum_source_coverage),
+            ("minimum_similarity", self.minimum_similarity),
+        ] {
+            if !(0.0..=1.0).contains(&value) {
+                return Err(FoError::InvalidConfig(format!(
+                    "{name} must lie in [0, 1]"
+                )));
+            }
         }
         Ok(())
     }
@@ -165,6 +197,8 @@ impl SearchOptions {
 pub struct SearchResult {
     pub document_id: u32,
     pub path: String,
+    #[serde(default)]
+    pub intent: SearchIntent,
     pub corpus_start: usize,
     pub corpus_end: usize,
     pub query_start: usize,
@@ -172,7 +206,21 @@ pub struct SearchResult {
     pub edit_distance: usize,
     pub edit_similarity: f32,
     pub anchor_coverage: f32,
+    #[serde(default)]
+    pub query_coverage: f32,
+    #[serde(default)]
+    pub source_coverage: f32,
     pub anchor_score: f32,
+    #[serde(default)]
+    pub vote_support: f32,
+    #[serde(default)]
+    pub chain_consistency: f32,
+    #[serde(default)]
+    pub matched_tokens: usize,
+    #[serde(default)]
+    pub distinct_anchor_count: usize,
+    #[serde(default)]
+    pub estimated_false_matches: f64,
     pub combined_score: f32,
     pub matched_text: String,
 }
