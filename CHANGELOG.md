@@ -31,6 +31,9 @@ All notable changes to FrankenOverlap are recorded here.
 - Query-grouped macro AUPRC, expected tie-aware Recall@k/MRR/nDCG, and deterministic query-bootstrap confidence intervals.
 - Constraint-based operating-threshold selection over every distinct score.
 - `fo-group-eval` CLI for grouped quality reports and production operating points.
+- Evidence-diverse active-learning selection combining uncertainty, model disagreement, hard-negative risk, and feature-space novelty.
+- Query/document diversity caps, duplicate suppression, and recommended feedback weights.
+- `fo-active` CLI for generating compact high-value review queues from unlabeled candidate streams.
 
 ### Changed
 
@@ -45,6 +48,7 @@ All notable changes to FrankenOverlap are recorded here.
 - Default FFT channel correlations fall from repetitions × buckets to 2 × repetitions.
 - Multi-view consensus penalizes single-scale accidents while retaining a dedicated high-recall preset for noisy text.
 - Quality gates can now distinguish global candidate-stream gains from broadly distributed per-query gains.
+- Feedback acquisition now targets the current decision boundary and newly discovered failure modes instead of repeatedly sampling easy examples.
 
 ## 0.1.0 - 2026-08-14
 
