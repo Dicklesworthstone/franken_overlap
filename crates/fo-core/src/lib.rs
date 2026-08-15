@@ -8,6 +8,7 @@ mod fingerprint;
 mod index;
 pub mod metrics;
 mod model;
+mod multiview;
 mod normalize;
 mod ranking;
 mod search;
@@ -33,6 +34,10 @@ pub use metrics::{
 pub use model::{
     IndexConfig, IndexStats, NormalizationProfile, Posting, PunctuationMode, SearchIntent,
     SearchOptions, SearchResult,
+};
+pub use multiview::{
+    FeatureViewConfig, MultiViewConfig, MultiViewIndex, MultiViewIndexBuilder,
+    MultiViewSearchResult, MultiViewStats, MultiViewViewStats, ViewEvidence,
 };
 pub use normalize::{NormalizedText, normalize};
 pub use ranking::{
