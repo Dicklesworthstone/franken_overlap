@@ -22,6 +22,7 @@ const MAX_ENTRIES: u64 = 2_000_000_000;
 const MAX_POSTINGS_PER_ENTRY: u32 = 2_000_000_000;
 const MIN_DOCUMENT_RECORD_BYTES: u64 = 20;
 const MIN_V2_ENTRY_RECORD_BYTES: u64 = 32;
+const MIN_V2_FILE_BYTES: u64 = 56;
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 static TEMPORARY_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -66,12 +67,13 @@ impl Index {
         path: impl AsRef<Path>,
         options: IndexSaveOptions,
     ) -> Result<IndexFileStats> {
+        let path = path.as_ref();
         match options.format {
             IndexStorageFormat::LegacyFixedV1 => {
-                self.save(&path)?;
-                legacy_file_stats(self, path.as_ref())
+                self.save(path)?;
+                legacy_file_stats(self, path)
             }
-            IndexStorageFormat::DeltaVarintV2 => save_v2(self, path.as_ref()),
+            IndexStorageFormat::DeltaVarintV2 => save_v2(self, path),
         }
     }
 
@@ -109,23 +111,22 @@ fn save_v2(index: &Index, path: &Path) -> Result<IndexFileStats> {
     let temporary = temporary_path(path);
     let file = File::create(&temporary).map_err(|error| FoError::io(&temporary, error))?;
     let mut writer = ChecksumWriter::new(BufWriter::new(file));
+    let qgram_size = checked_u32(index.config.qgram_size, "q-gram size")?;
+    let winnow_window = checked_u32(index.config.winnow_window, "winnow window")?;
+    let document_count = checked_u32(index.documents.len(), "document count")?;
+    let entry_count = u64::try_from(index.entries.len())
+        .map_err(|_| FoError::InvalidConfig("entry count exceeds u64".to_owned()))?;
 
     writer
         .write_all(MAGIC_V2)
         .and_then(|()| write_u32(&mut writer, FORMAT_VERSION_V2))
-        .and_then(|()| write_u32(&mut writer, checked_u32(index.config.qgram_size, "q-gram size")?))
-        .and_then(|()| {
-            write_u32(
-                &mut writer,
-                checked_u32(index.config.winnow_window, "winnow window")?,
-            )
-        })
+        .and_then(|()| write_u32(&mut writer, qgram_size))
+        .and_then(|()| write_u32(&mut writer, winnow_window))
         .map_err(|error| FoError::io(&temporary, error))?;
-
     write_normalization_header(&mut writer, &index.config.normalization)
         .map_err(|error| FoError::io(&temporary, error))?;
-    write_u32(&mut writer, checked_u32(index.documents.len(), "document count")?)
-        .and_then(|()| write_u64(&mut writer, index.entries.len() as u64))
+    write_u32(&mut writer, document_count)
+        .and_then(|()| write_u64(&mut writer, entry_count))
         .and_then(|()| write_u32(&mut writer, STORAGE_FLAGS_V2))
         .and_then(|()| write_u32(&mut writer, 0))
         .map_err(|error| FoError::io(&temporary, error))?;
@@ -139,6 +140,7 @@ fn save_v2(index: &Index, path: &Path) -> Result<IndexFileStats> {
 
     let mut posting_payload_bytes = 0u64;
     for entry in &index.entries {
+        let posting_count = checked_u32(entry.postings.len(), "posting count")?;
         let encoded_len = encoded_postings_len(&entry.postings)?;
         posting_payload_bytes = posting_payload_bytes
             .checked_add(encoded_len)
@@ -146,7 +148,7 @@ fn save_v2(index: &Index, path: &Path) -> Result<IndexFileStats> {
         write_u64(&mut writer, entry.fingerprint.hi)
             .and_then(|()| write_u64(&mut writer, entry.fingerprint.lo))
             .and_then(|()| write_u32(&mut writer, entry.document_frequency))
-            .and_then(|()| write_u32(&mut writer, checked_u32(entry.postings.len(), "posting count")?))
+            .and_then(|()| write_u32(&mut writer, posting_count))
             .and_then(|()| write_u64(&mut writer, encoded_len))
             .map_err(|error| FoError::io(&temporary, error))?;
         write_delta_postings(&mut writer, &entry.postings)
@@ -158,8 +160,8 @@ fn save_v2(index: &Index, path: &Path) -> Result<IndexFileStats> {
         .write_unhashed(&checksum.to_le_bytes())
         .and_then(|()| writer.flush())
         .map_err(|error| FoError::io(&temporary, error))?;
-    let file = writer
-        .into_inner()
+    let buffered = writer.into_inner();
+    let file = buffered
         .into_inner()
         .map_err(|error| FoError::io(&temporary, error.into_error()))?;
     file.sync_all()
@@ -184,7 +186,7 @@ fn load_v2(path: &Path) -> Result<(Index, IndexFileStats)> {
         .metadata()
         .map_err(|error| FoError::io(path, error))?
         .len();
-    if file_len < 64 {
+    if file_len < MIN_V2_FILE_BYTES {
         return Err(FoError::InvalidIndex("v2 index is too short".to_owned()));
     }
     let mut reader = ChecksumReader::new(BufReader::new(file));
@@ -372,7 +374,9 @@ fn validate_index_limits(index: &Index) -> Result<()> {
             index.documents.len()
         )));
     }
-    if index.entries.len() as u64 > MAX_ENTRIES {
+    let entry_count = u64::try_from(index.entries.len())
+        .map_err(|_| FoError::InvalidConfig("entry count exceeds u64".to_owned()))?;
+    if entry_count > MAX_ENTRIES {
         return Err(FoError::InvalidConfig(format!(
             "entry count {} exceeds the index safety limit {MAX_ENTRIES}",
             index.entries.len()
@@ -553,7 +557,10 @@ fn write_varint(writer: &mut impl Write, mut value: u64) -> std::io::Result<()> 
     writer.write_all(&bytes[..length])
 }
 
-fn read_varint_limited(reader: &mut impl Read, remaining: &mut u64) -> std::result::Result<u64, String> {
+fn read_varint_limited(
+    reader: &mut impl Read,
+    remaining: &mut u64,
+) -> std::result::Result<u64, String> {
     let mut value = 0u64;
     for shift in (0..70).step_by(7) {
         if *remaining == 0 {
@@ -793,15 +800,14 @@ impl<W> ChecksumWriter<W> {
         self.checksum
     }
 
-    fn write_unhashed(&mut self, bytes: &[u8]) -> std::io::Result<()> 
-    where
-        W: Write,
-    {
-        self.inner.write_all(bytes)
-    }
-
     fn into_inner(self) -> W {
         self.inner
+    }
+}
+
+impl<W: Write> ChecksumWriter<W> {
+    fn write_unhashed(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        self.inner.write_all(bytes)
     }
 }
 
