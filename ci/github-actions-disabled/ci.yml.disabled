@@ -1,0 +1,16 @@
+# Disabled intentionally: this repository is validated on owner-controlled machines.
+# Run `./scripts/ci-local.sh quick` during development and
+# `FO_UPDATE_NIGHTLY=1 ./scripts/ci-local.sh full` before merging or releasing.
+#
+# Historical GitHub Actions equivalent retained for reference only.
+name: CI (disabled)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  disabled:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Use scripts/ci-local.sh instead"
