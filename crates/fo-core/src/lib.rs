@@ -13,6 +13,7 @@ pub mod metrics;
 mod model;
 mod multiview;
 mod normalize;
+mod provenance;
 mod ranking;
 mod search;
 pub mod spectral;
@@ -23,23 +24,18 @@ pub use active_learning::{
     ActiveLearningCandidate, ActiveLearningOptions, ActiveLearningSelection,
     select_active_learning_queue,
 };
-pub use batch::{
-    BatchQuery, BatchSearchOptions, BatchSearchReport, BatchSearchResult,
-};
+pub use batch::{BatchQuery, BatchSearchOptions, BatchSearchReport, BatchSearchResult};
 pub use calibration::{
     CALIBRATION_FEATURE_COUNT, CALIBRATION_SCHEMA_VERSION, CalibratedResult, CalibrationModel,
     CalibrationOptions, FeedbackExample, evidence_vector, feature_names,
 };
 pub use chain::{Anchor, AnchorChain, ChainOptions, chain_anchors};
-pub use composite::{
-    CompositeMatchBlock, CompositeSearchOptions, CompositeSearchResult,
-};
+pub use composite::{CompositeMatchBlock, CompositeSearchOptions, CompositeSearchResult};
 pub use error::{FoError, Result};
 pub use fingerprint::{Feature, Fingerprint, qgram_hashes};
 pub use grouped_metrics::{
     AtKMetric, ConfidenceInterval, GroupedEvaluationOptions, GroupedEvaluationReport,
-    GroupedLabeledScore, ThresholdConstraints, grouped_evaluation_report,
-    select_operating_point,
+    GroupedLabeledScore, ThresholdConstraints, grouped_evaluation_report, select_operating_point,
 };
 pub use index::{Document, Index, IndexBuilder, IndexEntry};
 pub use metrics::{
@@ -55,6 +51,9 @@ pub use multiview::{
     MultiViewSearchResult, MultiViewStats, MultiViewViewStats, ViewEvidence,
 };
 pub use normalize::{NormalizedText, normalize};
+pub use provenance::{
+    OriginalByteRange, ProvenanceNormalizedText, normalize_with_provenance,
+};
 pub use ranking::{
     GroupedFeedbackExample, PairwiseRankingOptions, RANKING_FEATURE_COUNT,
     RANKING_SCHEMA_VERSION, RankedResult, RankingComparison, RankingModel, mine_hard_negatives,
