@@ -3,6 +3,7 @@
 mod gutenberg;
 mod http;
 mod model;
+#[allow(unused_imports)]
 mod sec;
 
 pub use gutenberg::{
