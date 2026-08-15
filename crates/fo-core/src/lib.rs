@@ -14,6 +14,7 @@ mod model;
 mod multiview;
 mod normalize;
 mod pan_metrics;
+mod planner;
 mod provenance;
 mod ranking;
 mod search;
@@ -53,6 +54,10 @@ pub use multiview::{
 };
 pub use normalize::{NormalizedText, normalize};
 pub use pan_metrics::{PanAnnotation, PanEvaluationReport, pan_evaluate, plagdet_score};
+pub use planner::{
+    AdaptiveMatch, AdaptiveRoute, AdaptiveSearchReport, QueryAdvisory, QueryPlan,
+    QueryPlannerOptions,
+};
 pub use provenance::{
     OriginalByteRange, ProvenanceNormalizedText, normalize_with_provenance,
 };
