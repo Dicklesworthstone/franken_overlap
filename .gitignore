@@ -1,5 +1,9 @@
 /target/
+/corpora/
+/benchmark-artifacts/
 *.foidx
+*.fosegments/
+*.fomv/
 *.tmp-*
 .DS_Store
 .idea/
