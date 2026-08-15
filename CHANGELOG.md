@@ -19,6 +19,8 @@ All notable changes to FrankenOverlap are recorded here.
 - Deterministic end-to-end AUPRC and Recall@1 quality-floor integration test.
 - `fo query` flags for intent, coverage and matched-length floors, fallback work budgets, fitted calibration models, and calibrated-probability thresholds.
 - End-to-end CLI tests for query intents and fail-closed calibration requirements.
+- Composite fragmented-source aggregation that combines non-overlapping passages, measures union coverage, and detects reordered blocks.
+- `fo-composite` CLI for source attribution and near-duplicate search across moved or interrupted passages.
 
 ### Changed
 

@@ -2,6 +2,7 @@
 
 mod calibration;
 mod chain;
+mod composite;
 mod error;
 mod fingerprint;
 mod index;
@@ -18,6 +19,9 @@ pub use calibration::{
     CalibrationOptions, FeedbackExample, evidence_vector, feature_names,
 };
 pub use chain::{Anchor, AnchorChain, ChainOptions, chain_anchors};
+pub use composite::{
+    CompositeMatchBlock, CompositeSearchOptions, CompositeSearchResult,
+};
 pub use error::{FoError, Result};
 pub use fingerprint::{Feature, Fingerprint, qgram_hashes};
 pub use index::{Document, Index, IndexBuilder, IndexEntry};
