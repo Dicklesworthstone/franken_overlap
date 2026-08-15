@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod synthetic;
+
 use std::error::Error;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
@@ -37,6 +39,8 @@ enum Command {
     CompareCalibration(CompareCalibrationCommand),
     /// Rerank a JSON result set with a fitted calibration model.
     Rerank(RerankCommand),
+    /// Run deterministic edited-text retrieval and legacy-baseline comparisons.
+    Synthetic(synthetic::SyntheticCommand),
 }
 
 #[derive(Debug, Args)]
@@ -154,6 +158,7 @@ fn run() -> CliResult<()> {
         Command::FitCalibration(command) => run_fit_calibration(command),
         Command::CompareCalibration(command) => run_compare_calibration(command),
         Command::Rerank(command) => run_rerank(command),
+        Command::Synthetic(command) => synthetic::run(command),
     }
 }
 
