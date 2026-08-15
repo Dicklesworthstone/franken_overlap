@@ -41,6 +41,9 @@ All notable changes to FrankenOverlap are recorded here.
 - Native PAN macro/micro precision, recall, F1, granularity, and PlagDet evaluation.
 - PAN XML parsing and detection output without Python or NumPy dependencies.
 - `fo-pan` end-to-end corpus runner using original-coordinate provenance for span evaluation.
+- Adaptive query diagnostics covering entropy, repetition, feature retention, heavy-feature loss, and exact posting-pair work.
+- Deterministic ordinary, bounded-sparse, and composite route execution through `search_adaptive`.
+- `fo-plan` CLI with structured multiview and dense-route advisories.
 
 ### Changed
 
@@ -57,6 +60,7 @@ All notable changes to FrankenOverlap are recorded here.
 - Quality gates can now distinguish global candidate-stream gains from broadly distributed per-query gains.
 - Feedback acquisition now targets the current decision boundary and newly discovered failure modes instead of repeatedly sampling easy examples.
 - Multi-query workloads now parallelize across independent specimens without nested parallelism inside sparse search.
+- Sparse work that exceeds the planner budget now receives a deterministic heavy-feature cap before execution.
 
 ## 0.1.0 - 2026-08-14
 
