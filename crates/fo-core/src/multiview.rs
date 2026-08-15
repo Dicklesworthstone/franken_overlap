@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -11,6 +12,7 @@ use crate::{
 
 const MULTIVIEW_FORMAT_VERSION: u32 = 1;
 const MANIFEST_FILE: &str = "manifest.json";
+static TEMPORARY_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeatureViewConfig {
@@ -147,9 +149,16 @@ impl MultiViewConfig {
                 "per_view_candidate_multiplier must be between 1 and 1024".to_owned(),
             ));
         }
+        let normalization = &self.views[0].normalization;
         let mut names = HashSet::with_capacity(self.views.len());
         for view in &self.views {
             view.validate()?;
+            if &view.normalization != normalization {
+                return Err(FoError::InvalidConfig(
+                    "all multi-view feature scales must share one normalization profile so spans remain comparable"
+                        .to_owned(),
+                ));
+            }
             if !names.insert(view.name.as_str()) {
                 return Err(FoError::InvalidConfig(format!(
                     "duplicate feature-view name {}",
@@ -178,11 +187,13 @@ pub struct MultiViewSearchResult {
     pub representative: SearchResult,
     pub fused_score: f32,
     pub view_support: usize,
+    pub total_views: usize,
     pub support_ratio: f32,
     pub score_disagreement: f32,
     pub weighted_edit_similarity: f32,
     pub weighted_query_coverage: f32,
     pub weighted_source_coverage: f32,
+    pub matched_tokens: usize,
     pub evidence: Vec<ViewEvidence>,
 }
 
@@ -284,7 +295,11 @@ impl MultiViewIndex {
         }
         let mut views = Vec::with_capacity(manifest.files.len());
         for (view_config, filename) in manifest.config.views.iter().zip(&manifest.files) {
-            if filename.contains('/') || filename.contains('\\') || filename == "." || filename == ".." {
+            if filename.contains('/')
+                || filename.contains('\\')
+                || filename == "."
+                || filename == ".."
+            {
                 return Err(FoError::InvalidIndex(format!(
                     "invalid multi-view filename {filename:?}"
                 )));
@@ -326,6 +341,7 @@ impl MultiViewIndex {
                         .max_results
                         .saturating_mul(self.config.per_view_candidate_multiplier),
                 );
+            view_options.max_candidates = view_options.max_candidates.max(view_options.max_results);
             view_options.minimum_similarity = options.minimum_similarity.min(0.15);
             view_options.minimum_matched_tokens = options
                 .minimum_matched_tokens
@@ -529,6 +545,12 @@ fn fuse_cluster(
     let weighted_query_coverage = weighted(|evidence| evidence.query_coverage);
     let weighted_source_coverage = weighted(|evidence| evidence.source_coverage);
     let weighted_chain_consistency = weighted(|evidence| evidence.chain_consistency);
+    let matched_tokens = cluster
+        .evidence
+        .iter()
+        .map(|evidence| evidence.matched_tokens)
+        .max()
+        .unwrap_or(0);
     let variance = cluster
         .evidence
         .iter()
@@ -539,7 +561,7 @@ fn fuse_cluster(
         / total_weight;
     let score_disagreement = variance.max(0.0).sqrt().clamp(0.0, 1.0);
     let consensus = (1.0 - 2.0 * score_disagreement).clamp(0.0, 1.0);
-    let support_ratio = view_support as f32 / config.views.len().max(1) as f32;
+    let support_ratio = view_support as f32 / config.views.len() as f32;
     let evidence_confidence = (1.0
         / (1.0 + cluster.representative.estimated_false_matches.max(0.0)))
         as f32;
@@ -548,16 +570,17 @@ fn fuse_cluster(
         + 0.14 * weighted_query_coverage
         + 0.08 * weighted_chain_consistency
         + 0.07 * evidence_confidence;
-    let fused_score = (base * (0.68 + 0.22 * support_ratio + 0.10 * consensus))
-        .clamp(0.0, 1.0);
+    let fused_score =
+        (base * (0.68 + 0.22 * support_ratio + 0.10 * consensus)).clamp(0.0, 1.0);
     if fused_score < options.minimum_similarity {
         return None;
     }
-    if cluster.representative.matched_tokens
-        < options
-            .minimum_matched_tokens
-            .min(cluster.representative.query_end)
-    {
+    let representative_query_span = cluster
+        .representative
+        .query_end
+        .saturating_sub(cluster.representative.query_start)
+        .max(1);
+    if matched_tokens < options.minimum_matched_tokens.min(representative_query_span) {
         return None;
     }
     match options.intent {
@@ -580,11 +603,13 @@ fn fuse_cluster(
         representative: cluster.representative,
         fused_score,
         view_support,
+        total_views: config.views.len(),
         support_ratio,
         score_disagreement,
         weighted_edit_similarity,
         weighted_query_coverage,
         weighted_source_coverage,
+        matched_tokens,
         evidence: cluster.evidence,
     })
 }
@@ -616,9 +641,12 @@ fn validate_document_identity(views: &[NamedIndex]) -> Result<()> {
             )));
         }
         for (left, right) in first.index.documents().iter().zip(view.index.documents()) {
-            if left.id != right.id || left.path != right.path {
+            if left.id != right.id
+                || left.path != right.path
+                || left.normalized.tokens.len() != right.normalized.tokens.len()
+            {
                 return Err(FoError::InvalidIndex(format!(
-                    "view {} has inconsistent document identity",
+                    "view {} has inconsistent document identity or normalized coordinates",
                     view.config.name
                 )));
             }
@@ -632,7 +660,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     fs::write(&temporary, bytes).map_err(|error| FoError::io(&temporary, error))?;
     match fs::rename(&temporary, path) {
         Ok(()) => Ok(()),
-        Err(error) if path.exists() => {
+        Err(_error) if path.exists() => {
             fs::remove_file(path).map_err(|remove_error| FoError::io(path, remove_error))?;
             fs::rename(&temporary, path).map_err(|rename_error| FoError::io(path, rename_error))
         }
@@ -644,17 +672,19 @@ fn temporary_path(path: &Path) -> PathBuf {
     let mut filename = path
         .file_name()
         .map_or_else(|| "manifest".into(), |name| name.to_os_string());
-    filename.push(format!(".tmp-{}", std::process::id()));
+    let sequence = TEMPORARY_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    filename.push(format!(".tmp-{}-{sequence}", std::process::id()));
     path.with_file_name(filename)
 }
 
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{MultiViewConfig, MultiViewIndex, MultiViewIndexBuilder};
-    use crate::{SearchOptions, SearchIntent};
+    use crate::{SearchIntent, SearchOptions};
 
     #[test]
     fn consensus_views_rank_the_edited_source() {
@@ -675,7 +705,7 @@ mod tests {
         let index = builder.build().expect("index");
         let results = index
             .search(
-                "the observatory opened its copper shutters before sunrise checked all instruments and published the raw measurements",
+                "the observatory opened copper shutters before dawn checked every instrument and published raw measurements",
                 &SearchOptions {
                     intent: SearchIntent::SourceAttribution,
                     minimum_similarity: 0.10,
@@ -692,14 +722,10 @@ mod tests {
 
     #[test]
     fn persistence_preserves_consensus_results() {
+        let text = "preserve every raw observation and document each transformation before comparing causal models";
         let mut builder =
             MultiViewIndexBuilder::new(MultiViewConfig::balanced()).expect("builder");
-        builder
-            .add_document(
-                "source.txt",
-                "preserve every raw observation and document each transformation before comparing causal models",
-            )
-            .expect("source");
+        builder.add_document("source.txt", text).expect("source");
         let index = builder.build().expect("index");
         let path = temporary_directory();
         index.save(&path).expect("save");
@@ -710,18 +736,8 @@ mod tests {
             minimum_matched_tokens: 8,
             ..SearchOptions::default()
         };
-        let before = index
-            .search(
-                "document every transformation and preserve the raw observations before comparing causal models",
-                &options,
-            )
-            .expect("before");
-        let after = loaded
-            .search(
-                "document every transformation and preserve the raw observations before comparing causal models",
-                &options,
-            )
-            .expect("after");
+        let before = index.search(text, &options).expect("before");
+        let after = loaded.search(text, &options).expect("after");
         fs::remove_dir_all(path).ok();
         assert_eq!(before.len(), after.len());
         assert_eq!(before[0].representative.path, after[0].representative.path);
