@@ -4,6 +4,7 @@ members = [
   "crates/fo-core",
   "crates/fo-cli",
   "crates/fo-conformance",
+  "crates/fo-bench",
   "crates/franken-overlap",
 ]
 
