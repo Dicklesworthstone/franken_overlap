@@ -17,6 +17,8 @@ All notable changes to FrankenOverlap are recorded here.
 - Append-only accepted/rejected feedback records.
 - Deterministic regularized logistic calibration, held-out AUPRC gates, and calibrated reranking.
 - Deterministic end-to-end AUPRC and Recall@1 quality-floor integration test.
+- `fo query` flags for intent, coverage and matched-length floors, fallback work budgets, fitted calibration models, and calibrated-probability thresholds.
+- End-to-end CLI tests for query intents and fail-closed calibration requirements.
 
 ### Changed
 
@@ -24,6 +26,7 @@ All notable changes to FrankenOverlap are recorded here.
 - Candidate voting now uses two shifted diagonal grids to reduce bin-boundary failures.
 - Source-attribution scoring now penalizes insufficient specimen coverage and insignificant local fragments.
 - The formerly quadratic short-query fallback is explicitly work-bounded.
+- Human-readable query output now exposes the evidence needed to audit each ranking decision.
 - The README and quality documentation now describe the implemented system rather than the initial prototype.
 
 ## 0.1.0 - 2026-08-14
