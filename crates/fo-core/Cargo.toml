@@ -18,6 +18,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 unicode-normalization.workspace = true
+unicode-segmentation.workspace = true
 fsci-fft = { git = "https://github.com/Dicklesworthstone/frankenscipy", rev = "2da83a7f42280d517241d6d2874d4ba9ebc2484c", package = "fsci-fft", optional = true }
 
 [lints]
