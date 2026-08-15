@@ -42,8 +42,8 @@ Force a route when the application already knows the intent:
 
 ```bash
 fo-search query sec.fohybrid '"material weakness" controls' --mode lexical
-fo-search query books.fohybrid specimen.txt --query-file --mode overlap
-fo-search query books.fohybrid long-specimen.txt --query-file --mode composite
+fo-search query books.fohybrid --query-file specimen.txt --mode overlap
+fo-search query books.fohybrid --query-file long-specimen.txt --mode composite
 fo-search query sec.fohybrid 'risk factor language' --mode hybrid
 ```
 
