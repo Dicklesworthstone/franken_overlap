@@ -239,7 +239,11 @@ pub fn select_operating_point(
             label: example.label,
         })
         .collect::<Vec<_>>();
-    let report = precision_recall_report(&flat, evaluation)?;
+    let complete_evaluation = EvaluationOptions {
+        max_curve_points: flat.len().max(2),
+        calibration_bins: evaluation.calibration_bins,
+    };
+    let report = precision_recall_report(&flat, complete_evaluation)?;
     report
         .curve
         .into_iter()
@@ -324,11 +328,7 @@ fn ranking_metrics(examples: &[&GroupedLabeledScore], ks: &[usize]) -> QueryRank
             .filter(|(_, example)| example.label)
             .count();
         if !prior_positive && group_positives > 0 {
-            reciprocal_rank = expected_reciprocal_rank(
-                cursor,
-                group_size,
-                group_positives,
-            );
+            reciprocal_rank = expected_reciprocal_rank(cursor, group_size, group_positives);
             prior_positive = true;
         }
         let positive_fraction = group_positives as f64 / group_size as f64;
