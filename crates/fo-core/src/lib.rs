@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod active_learning;
+mod batch;
 mod calibration;
 mod chain;
 mod composite;
@@ -21,6 +22,9 @@ mod winnow;
 pub use active_learning::{
     ActiveLearningCandidate, ActiveLearningOptions, ActiveLearningSelection,
     select_active_learning_queue,
+};
+pub use batch::{
+    BatchQuery, BatchSearchOptions, BatchSearchReport, BatchSearchResult,
 };
 pub use calibration::{
     CALIBRATION_FEATURE_COUNT, CALIBRATION_SCHEMA_VERSION, CalibratedResult, CalibrationModel,

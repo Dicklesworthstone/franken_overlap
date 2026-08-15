@@ -34,6 +34,9 @@ All notable changes to FrankenOverlap are recorded here.
 - Evidence-diverse active-learning selection combining uncertainty, model disagreement, hard-negative risk, and feature-space novelty.
 - Query/document diversity caps, duplicate suppression, and recommended feedback weights.
 - `fo-active` CLI for generating compact high-value review queues from unlabeled candidate streams.
+- Stable-order parallel batch search over one resident index with optional private worker pools.
+- Identical-specimen deduplication, total input budgets, per-query error isolation, and fail-fast control.
+- `fo-batch` NDJSON/JSON CLI and batch execution report.
 
 ### Changed
 
@@ -49,6 +52,7 @@ All notable changes to FrankenOverlap are recorded here.
 - Multi-view consensus penalizes single-scale accidents while retaining a dedicated high-recall preset for noisy text.
 - Quality gates can now distinguish global candidate-stream gains from broadly distributed per-query gains.
 - Feedback acquisition now targets the current decision boundary and newly discovered failure modes instead of repeatedly sampling easy examples.
+- Multi-query workloads now parallelize across independent specimens without nested parallelism inside sparse search.
 
 ## 0.1.0 - 2026-08-14
 
