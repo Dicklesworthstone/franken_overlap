@@ -1,7 +1,9 @@
+#[cfg(any(feature = "frankenscipy", test))]
 use std::f64::consts::TAU;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "frankenscipy", test))]
 use crate::fingerprint::categorical_hash;
 use crate::{FoError, NormalizationProfile, Result, normalize};
 
@@ -196,10 +198,12 @@ fn phase_fft_scores(
         .collect())
 }
 
+#[cfg(any(feature = "frankenscipy", test))]
 fn phase_components(token: u32, repetition: usize, phase_count: usize) -> (f64, f64) {
     let phase = categorical_hash(token, repetition) % phase_count as u64;
     let angle = TAU * phase as f64 / phase_count as f64;
-    angle.sin_cos()
+    let (sine, cosine) = angle.sin_cos();
+    (cosine, sine)
 }
 
 fn extract_peaks(
