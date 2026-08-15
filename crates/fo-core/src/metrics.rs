@@ -112,7 +112,7 @@ pub fn precision_recall_report(
     while cursor < ranked.len() {
         let threshold = ranked[cursor].score;
         let mut end = cursor + 1;
-        while end < ranked.len() && ranked[end].score == threshold {
+        while end < ranked.len() && ranked[end].score.total_cmp(&threshold).is_eq() {
             end += 1;
         }
         for example in &ranked[cursor..end] {
@@ -260,7 +260,7 @@ mod tests {
         .expect("report");
         assert!((report.average_precision - 1.0).abs() < 1.0e-12);
         assert!((report.best_f1 - 1.0).abs() < 1.0e-12);
-        assert_eq!(report.best_threshold, 0.80);
+        assert!((report.best_threshold - 0.80).abs() < 1.0e-12);
     }
 
     #[test]
@@ -277,7 +277,7 @@ mod tests {
         .expect("report");
         assert_eq!(report.curve[0].true_positives, 1);
         assert_eq!(report.curve[0].false_positives, 1);
-        assert_eq!(report.curve[0].threshold, 0.8);
+        assert!((report.curve[0].threshold - 0.8).abs() < 1.0e-12);
     }
 
     #[test]
@@ -294,8 +294,8 @@ mod tests {
         )
         .expect("report");
         assert!(report.curve.len() <= 8);
-        assert_eq!(report.curve.first().expect("first").threshold, 1.0);
-        assert_eq!(report.curve.last().expect("last").threshold, 0.01);
+        assert!((report.curve.first().expect("first").threshold - 1.0).abs() < 1.0e-12);
+        assert!((report.curve.last().expect("last").threshold - 0.01).abs() < 1.0e-12);
     }
 
     #[test]
