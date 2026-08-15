@@ -37,6 +37,7 @@ All notable changes to FrankenOverlap are recorded here.
 - Stable-order parallel batch search over one resident index with optional private worker pools.
 - Identical-specimen deduplication, total input budgets, per-query error isolation, and fail-fast control.
 - `fo-batch` NDJSON/JSON CLI and batch execution report.
+- Provenance-preserving Unicode normalization with normalized-token to original UTF-8 byte-range mapping.
 
 ### Changed
 
