@@ -10,6 +10,7 @@ mod fingerprint;
 mod grouped_metrics;
 #[allow(clippy::cast_lossless, clippy::derivable_impls)]
 mod hybrid;
+mod hybrid_profile;
 mod index;
 mod lexical;
 pub mod metrics;
@@ -48,6 +49,9 @@ pub use hybrid::{
     HybridDocumentInput, HybridFilter, HybridIndex, HybridIndexBuilder, HybridIndexConfig,
     HybridIndexStats, HybridOverlapEvidence, HybridQueryMode, HybridScoreExplanation,
     HybridSearchOptions, HybridSearchReport, HybridSearchResult, HYBRID_INDEX_SCHEMA_VERSION,
+};
+pub use hybrid_profile::{
+    HybridFusionProfile, HybridMetricSnapshot, HYBRID_FUSION_PROFILE_SCHEMA_VERSION,
 };
 pub use index::{Document, Index, IndexBuilder, IndexEntry};
 pub use lexical::{
