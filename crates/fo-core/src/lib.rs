@@ -26,5 +26,7 @@ pub use model::{
 };
 pub use normalize::{NormalizedText, normalize};
 pub use spectral::{SpectralOptions, SpectralPeak, spectral_scan};
-pub use verify::{Alignment, global_levenshtein, semi_global_banded};
+pub use verify::{
+    Alignment, InfixCandidate, global_levenshtein, myers_infix_candidates, semi_global_banded,
+};
 pub use winnow::winnow;
