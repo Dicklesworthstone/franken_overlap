@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 use fo_core::{
     GroupedEvaluationOptions, GroupedEvaluationReport, GroupedLabeledScore, HybridDocumentInput,
-    HybridIndex, HybridIndexBuilder, HybridIndexConfig, HybridQueryMode, HybridSearchOptions,
+    HybridIndexBuilder, HybridIndexConfig, HybridQueryMode, HybridSearchOptions,
     LexicalSearchOptions, NormalizationProfile, SearchOptions, grouped_evaluation_report, normalize,
 };
 use fo_corpus::{CorpusManifest, atomic_write, unix_timestamp};
@@ -62,8 +62,6 @@ struct QuerySpec {
     profile: String,
     text: String,
     positive_ids: Vec<String>,
-    #[serde(default)]
-    metadata: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +73,7 @@ struct BenchmarkDocument {
     metadata: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Cell {
     cost: u32,
     start: u32,
@@ -154,6 +152,7 @@ struct BuildReport {
 #[derive(Debug, Clone, Serialize)]
 struct BreakEvenReport {
     indexed_method: String,
+    exhaustive_complete_queries: usize,
     exhaustive_p95_ms: Option<f64>,
     indexed_p95_ms: f64,
     build_ms: f64,
@@ -307,7 +306,13 @@ fn run() -> BenchResult<()> {
         let exact_started = Instant::now();
         let exact_scores = normalized_documents
             .iter()
-            .map(|document| f64::from(document.text.contains(&normalized_query.text)))
+            .map(|document| {
+                if document.text.contains(&normalized_query.text) {
+                    1.0
+                } else {
+                    0.0
+                }
+            })
             .collect::<Vec<_>>();
         exact_accumulator.observe(query, &exact_scores, &labels, exact_started.elapsed());
 
@@ -434,8 +439,14 @@ fn run() -> BenchResult<()> {
 
         for document_index in 0..documents.len() {
             let mut scores = BTreeMap::new();
-            scores.insert("normalized_exact_substring".to_owned(), exact_scores[document_index]);
-            scores.insert("fielded_bm25_phrase_proximity".to_owned(), lexical_scores[document_index]);
+            scores.insert(
+                "normalized_exact_substring".to_owned(),
+                exact_scores[document_index],
+            );
+            scores.insert(
+                "fielded_bm25_phrase_proximity".to_owned(),
+                lexical_scores[document_index],
+            );
             scores.insert("franken_overlap".to_owned(), overlap_scores[document_index]);
             scores.insert("franken_hybrid".to_owned(), hybrid_scores[document_index]);
             if let Some(alignment) = exhaustive_scores[document_index] {
@@ -681,8 +692,8 @@ fn exhaustive_semi_global(pattern: &[u32], text: &[u32]) -> BenchResult<Exhausti
                 cost: current[column - 1].cost.saturating_add(1),
                 start: current[column - 1].start,
             };
-            current[column] = best_cell(
-                best_cell(diagonal, delete_pattern, column),
+            current[column] = better_transition(
+                better_transition(diagonal, delete_pattern, column),
                 insert_text,
                 column,
             );
@@ -693,12 +704,8 @@ fn exhaustive_semi_global(pattern: &[u32], text: &[u32]) -> BenchResult<Exhausti
     let mut best = previous[0];
     let mut best_end = 0usize;
     for (end, &cell) in previous.iter().enumerate().skip(1) {
-        let candidate = best_cell(cell, best, end);
-        if candidate.cost != best.cost
-            || candidate.start != best.start
-            || span_length(candidate, end) > span_length(best, best_end)
-        {
-            best = candidate;
+        if better_final(cell, end, best, best_end) {
+            best = cell;
             best_end = end;
         }
     }
@@ -715,14 +722,25 @@ fn exhaustive_semi_global(pattern: &[u32], text: &[u32]) -> BenchResult<Exhausti
     })
 }
 
-fn best_cell(left: Cell, right: Cell, end: usize) -> Cell {
-    left.cost
-        .cmp(&right.cost)
-        .then_with(|| span_length(right, end).cmp(&span_length(left, end)))
-        .then_with(|| left.start.cmp(&right.start))
-        .is_le()
-        .then_some(left)
-        .unwrap_or(right)
+fn better_transition(left: Cell, right: Cell, end: usize) -> Cell {
+    if left.cost < right.cost
+        || left.cost == right.cost
+            && (span_length(left, end) > span_length(right, end)
+                || span_length(left, end) == span_length(right, end)
+                    && left.start < right.start)
+    {
+        left
+    } else {
+        right
+    }
+}
+
+fn better_final(candidate: Cell, candidate_end: usize, best: Cell, best_end: usize) -> bool {
+    candidate.cost < best.cost
+        || candidate.cost == best.cost
+            && (span_length(candidate, candidate_end) > span_length(best, best_end)
+                || span_length(candidate, candidate_end) == span_length(best, best_end)
+                    && candidate.start < best.start)
 }
 
 fn span_length(cell: Cell, end: usize) -> usize {
@@ -745,6 +763,7 @@ fn break_even_report(
         .filter(|value| *value > 0.0);
     BreakEvenReport {
         indexed_method: indexed.name.clone(),
+        exhaustive_complete_queries: exhaustive.complete_queries,
         exhaustive_p95_ms,
         indexed_p95_ms: indexed.p95_ms,
         build_ms,
@@ -787,29 +806,40 @@ fn write_jsonl(path: &Path, rows: &[PairScoreRow]) -> BenchResult<()> {
 
 fn print_report(report: &BenchmarkReport) {
     println!("Corpus:                  {}", report.corpus_id);
-    println!("Documents / queries:     {} / {}", report.indexed_documents, report.queries);
+    println!(
+        "Documents / queries:     {} / {}",
+        report.indexed_documents, report.queries
+    );
     println!("Index build ms:          {:.3}", report.build.build_ms);
-    println!("Exhaustive complete:     {}", report.exhaustive_coverage.complete);
+    println!(
+        "Exhaustive complete:     {}",
+        report.exhaustive_coverage.complete
+    );
     println!(
         "Exhaustive queries:      {} complete, {} partial",
         report.exhaustive_coverage.complete_queries,
         report.exhaustive_coverage.partial_queries
     );
-    println!("Exhaustive DP cells:     {}", report.exhaustive_coverage.cells);
+    println!(
+        "Exhaustive DP cells:     {}",
+        report.exhaustive_coverage.cells
+    );
     for method in &report.methods {
         let quality = method
             .quality
             .as_ref()
-            .map(|quality| format!(
-                "micro={:.6} macro={:.6} r@1={:.6}",
-                quality.micro.average_precision,
-                quality.macro_average_precision,
-                quality
-                    .recall_at_k
-                    .iter()
-                    .find(|metric| metric.k == 1)
-                    .map_or(0.0, |metric| metric.value)
-            ))
+            .map(|quality| {
+                format!(
+                    "micro={:.6} macro={:.6} r@1={:.6}",
+                    quality.micro.average_precision,
+                    quality.macro_average_precision,
+                    quality
+                        .recall_at_k
+                        .iter()
+                        .find(|metric| metric.k == 1)
+                        .map_or(0.0, |metric| metric.value)
+                )
+            })
             .unwrap_or_else(|| "quality=n/a".to_owned());
         println!(
             "{:<34} p95={:>10.3}ms qps={:>10.3} {}",
@@ -870,15 +900,12 @@ fn invalid(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cell, best_cell, exhaustive_semi_global};
+    use super::{Cell, better_final, better_transition, exhaustive_semi_global};
 
     #[test]
     fn exhaustive_alignment_finds_exact_infix() {
-        let alignment = exhaustive_semi_global(
-            &[2, 3, 4],
-            &[0, 1, 2, 3, 4, 5],
-        )
-        .expect("alignment");
+        let alignment = exhaustive_semi_global(&[2, 3, 4], &[0, 1, 2, 3, 4, 5])
+            .expect("alignment");
         assert_eq!(alignment.distance, 0);
         assert_eq!((alignment.text_start, alignment.text_end), (2, 5));
         assert_eq!(alignment.similarity, 1.0);
@@ -893,12 +920,20 @@ mod tests {
     }
 
     #[test]
-    fn tie_breaker_prefers_longer_then_earlier_spans() {
+    fn transition_tie_breaker_prefers_longer_then_earlier_spans() {
         let longer = Cell { cost: 1, start: 2 };
         let shorter = Cell { cost: 1, start: 4 };
-        assert_eq!(best_cell(longer, shorter, 7).start, 2);
+        assert_eq!(better_transition(longer, shorter, 7), longer);
         let early = Cell { cost: 1, start: 1 };
         let late = Cell { cost: 1, start: 2 };
-        assert_eq!(best_cell(early, late, 5).start, 1);
+        assert_eq!(better_transition(early, late, 5), early);
+    }
+
+    #[test]
+    fn final_tie_breaker_uses_each_candidates_actual_end() {
+        let candidate = Cell { cost: 1, start: 4 };
+        let best = Cell { cost: 1, start: 1 };
+        assert!(better_final(candidate, 10, best, 5));
+        assert!(!better_final(best, 5, candidate, 10));
     }
 }
