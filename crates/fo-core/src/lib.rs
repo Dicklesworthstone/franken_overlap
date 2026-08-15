@@ -13,6 +13,7 @@ pub mod metrics;
 mod model;
 mod multiview;
 mod normalize;
+mod pan_metrics;
 mod provenance;
 mod ranking;
 mod search;
@@ -51,6 +52,7 @@ pub use multiview::{
     MultiViewSearchResult, MultiViewStats, MultiViewViewStats, ViewEvidence,
 };
 pub use normalize::{NormalizedText, normalize};
+pub use pan_metrics::{PanAnnotation, PanEvaluationReport, pan_evaluate, plagdet_score};
 pub use provenance::{
     OriginalByteRange, ProvenanceNormalizedText, normalize_with_provenance,
 };
