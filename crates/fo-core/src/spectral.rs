@@ -1,15 +1,21 @@
+use std::f64::consts::TAU;
+
 use serde::{Deserialize, Serialize};
 
-use crate::fingerprint::{categorical_hash, categorical_sign};
+use crate::fingerprint::categorical_hash;
 use crate::{FoError, NormalizationProfile, Result, normalize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpectralOptions {
     pub repetitions: usize,
+    /// Number of quantized unit-circle phases used by the FFT sketch.
+    ///
+    /// This field retains its original name for serialization compatibility.
     pub buckets: usize,
     pub max_results: usize,
     pub minimum_score: f32,
     pub local_maximum_radius: usize,
+    /// Maximum exact token comparisons before the FFT backend is required.
     pub direct_work_limit: u64,
 }
 
@@ -35,7 +41,7 @@ impl SpectralOptions {
         }
         if !(2..=4096).contains(&self.buckets) {
             return Err(FoError::InvalidConfig(
-                "spectral buckets must be between 2 and 4096".to_owned(),
+                "spectral phase buckets must be between 2 and 4096".to_owned(),
             ));
         }
         if self.max_results == 0 {
@@ -43,9 +49,14 @@ impl SpectralOptions {
                 "spectral max_results must be positive".to_owned(),
             ));
         }
-        if !(-1.0..=1.0).contains(&self.minimum_score) {
+        if !self.minimum_score.is_finite() || !(-1.0..=1.0).contains(&self.minimum_score) {
             return Err(FoError::InvalidConfig(
-                "spectral minimum_score must lie in [-1, 1]".to_owned(),
+                "spectral minimum_score must be finite and lie in [-1, 1]".to_owned(),
+            ));
+        }
+        if self.direct_work_limit == 0 {
+            return Err(FoError::InvalidConfig(
+                "spectral direct_work_limit must be positive".to_owned(),
             ));
         }
         Ok(())
@@ -60,13 +71,14 @@ pub struct SpectralPeak {
     pub matched_text: String,
 }
 
-/// Dense CountSketch categorical cross-correlation.
+/// Dense categorical cross-correlation.
 ///
-/// Token IDs are never treated as magnitudes. Each repetition maps a token to a
-/// random bucket and sign, so equal categories contribute +1 while unequal
-/// categories cancel in expectation. With the `frankenscipy` feature this is
-/// evaluated by batched FFT correlation; otherwise a bounded direct reference
-/// kernel is used.
+/// Small and medium workloads are evaluated exactly: the score at each offset is
+/// the fraction of equal categorical tokens. Larger workloads use independently
+/// hashed unit-circle phases. Equal categories contribute exactly one per
+/// repetition; unequal categories have zero expected dot product. The phase
+/// representation needs two real correlations per repetition instead of one
+/// correlation per CountSketch bucket.
 #[allow(clippy::missing_errors_doc)]
 pub fn spectral_scan(
     corpus: &str,
@@ -84,10 +96,23 @@ pub fn spectral_scan(
         return Ok(Vec::new());
     }
 
-    #[cfg(feature = "frankenscipy")]
-    let scores = fft_scores(&corpus.tokens, &specimen.tokens, options)?;
-    #[cfg(not(feature = "frankenscipy"))]
-    let scores = direct_scores(&corpus.tokens, &specimen.tokens, options)?;
+    let direct_work = comparison_work(corpus.len(), specimen.len());
+    let scores = if direct_work <= options.direct_work_limit as u128 {
+        exact_direct_scores(&corpus.tokens, &specimen.tokens)
+    } else {
+        #[cfg(feature = "frankenscipy")]
+        {
+            phase_fft_scores(&corpus.tokens, &specimen.tokens, options)?
+        }
+        #[cfg(not(feature = "frankenscipy"))]
+        {
+            return Err(FoError::Spectral(format!(
+                "exact dense workload {direct_work} exceeds limit {}; rebuild with --features \
+                 frankenscipy or raise direct_work_limit",
+                options.direct_work_limit
+            )));
+        }
+    };
 
     Ok(extract_peaks(
         &scores,
@@ -97,79 +122,71 @@ pub fn spectral_scan(
     ))
 }
 
-fn direct_scores(corpus: &[u32], specimen: &[u32], options: &SpectralOptions) -> Result<Vec<f32>> {
+fn comparison_work(corpus_length: usize, specimen_length: usize) -> u128 {
+    if corpus_length < specimen_length || specimen_length == 0 {
+        return 0;
+    }
+    (corpus_length - specimen_length + 1) as u128 * specimen_length as u128
+}
+
+fn exact_direct_scores(corpus: &[u32], specimen: &[u32]) -> Vec<f32> {
     let offsets = corpus.len() - specimen.len() + 1;
-    let work = (offsets as u128)
-        .saturating_mul(specimen.len() as u128)
-        .saturating_mul(options.repetitions as u128);
-    if work > options.direct_work_limit as u128 {
-        return Err(FoError::Spectral(format!(
-            "direct CountSketch workload {work} exceeds limit {}; rebuild with --features \
-             frankenscipy or raise direct_work_limit",
-            options.direct_work_limit
-        )));
-    }
-    let denominator = specimen.len() as f64 * options.repetitions as f64;
+    let denominator = specimen.len().max(1) as f32;
     let mut scores = vec![0.0f32; offsets];
-    for offset in 0..offsets {
-        let mut score = 0.0f64;
-        for repetition in 0..options.repetitions {
-            for (position, &query_token) in specimen.iter().enumerate() {
-                let corpus_token = corpus[offset + position];
-                if categorical_hash(corpus_token, repetition) % options.buckets as u64
-                    == categorical_hash(query_token, repetition) % options.buckets as u64
-                {
-                    score += categorical_sign(corpus_token, repetition)
-                        * categorical_sign(query_token, repetition);
-                }
-            }
-        }
-        scores[offset] = (score / denominator).clamp(-1.0, 1.0) as f32;
+    for (offset, score) in scores.iter_mut().enumerate() {
+        let matches = specimen
+            .iter()
+            .zip(&corpus[offset..offset + specimen.len()])
+            .filter(|(left, right)| left == right)
+            .count();
+        *score = matches as f32 / denominator;
     }
-    Ok(scores)
+    scores
 }
 
 #[cfg(feature = "frankenscipy")]
-fn fft_scores(corpus: &[u32], specimen: &[u32], options: &SpectralOptions) -> Result<Vec<f32>> {
+fn phase_fft_scores(
+    corpus: &[u32],
+    specimen: &[u32],
+    options: &SpectralOptions,
+) -> Result<Vec<f32>> {
     let offsets = corpus.len() - specimen.len() + 1;
     let mut accumulated = vec![0.0f64; offsets];
     for repetition in 0..options.repetitions {
-        for bucket in 0..options.buckets {
-            let corpus_channel = corpus
-                .iter()
-                .map(|&token| {
-                    if categorical_hash(token, repetition) % options.buckets as u64
-                        == bucket as u64
-                    {
-                        categorical_sign(token, repetition)
-                    } else {
-                        0.0
-                    }
-                })
-                .collect::<Vec<_>>();
-            let specimen_channel = specimen
-                .iter()
-                .map(|&token| {
-                    if categorical_hash(token, repetition) % options.buckets as u64
-                        == bucket as u64
-                    {
-                        categorical_sign(token, repetition)
-                    } else {
-                        0.0
-                    }
-                })
-                .collect::<Vec<_>>();
-            let channel = fsci_fft::fftcorrelate(&corpus_channel, &specimen_channel, "valid")
-                .map_err(|error| FoError::Spectral(error.to_string()))?;
-            if channel.len() != offsets {
-                return Err(FoError::Spectral(format!(
-                    "FrankenSciPy returned {} valid offsets; expected {offsets}",
-                    channel.len()
-                )));
-            }
-            for (sum, value) in accumulated.iter_mut().zip(channel) {
-                *sum += value;
-            }
+        let corpus_cos = corpus
+            .iter()
+            .map(|&token| phase_components(token, repetition, options.buckets).0)
+            .collect::<Vec<_>>();
+        let corpus_sin = corpus
+            .iter()
+            .map(|&token| phase_components(token, repetition, options.buckets).1)
+            .collect::<Vec<_>>();
+        let specimen_cos = specimen
+            .iter()
+            .map(|&token| phase_components(token, repetition, options.buckets).0)
+            .collect::<Vec<_>>();
+        let specimen_sin = specimen
+            .iter()
+            .map(|&token| phase_components(token, repetition, options.buckets).1)
+            .collect::<Vec<_>>();
+
+        let cosine = fsci_fft::fftcorrelate(&corpus_cos, &specimen_cos, "valid")
+            .map_err(|error| FoError::Spectral(error.to_string()))?;
+        let sine = fsci_fft::fftcorrelate(&corpus_sin, &specimen_sin, "valid")
+            .map_err(|error| FoError::Spectral(error.to_string()))?;
+        if cosine.len() != offsets || sine.len() != offsets {
+            return Err(FoError::Spectral(format!(
+                "FrankenSciPy returned phase channels of lengths {} and {}; expected {offsets}",
+                cosine.len(),
+                sine.len()
+            )));
+        }
+        for ((sum, cosine_value), sine_value) in accumulated
+            .iter_mut()
+            .zip(cosine)
+            .zip(sine)
+        {
+            *sum += cosine_value + sine_value;
         }
     }
     let denominator = specimen.len() as f64 * options.repetitions as f64;
@@ -177,6 +194,12 @@ fn fft_scores(corpus: &[u32], specimen: &[u32], options: &SpectralOptions) -> Re
         .into_iter()
         .map(|score| (score / denominator).clamp(-1.0, 1.0) as f32)
         .collect())
+}
+
+fn phase_components(token: u32, repetition: usize, phase_count: usize) -> (f64, f64) {
+    let phase = categorical_hash(token, repetition) % phase_count as u64;
+    let angle = TAU * phase as f64 / phase_count as f64;
+    angle.sin_cos()
 }
 
 fn extract_peaks(
@@ -225,7 +248,9 @@ fn extract_peaks(
 
 #[cfg(test)]
 mod tests {
-    use super::{SpectralOptions, spectral_scan};
+    use super::{
+        SpectralOptions, exact_direct_scores, phase_components, spectral_scan,
+    };
     use crate::NormalizationProfile;
 
     #[test]
@@ -244,5 +269,56 @@ mod tests {
         assert!(!peaks.is_empty());
         assert_eq!(peaks[0].matched_text, "two three four");
         assert!((peaks[0].score - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn direct_lane_reports_exact_positional_equality() {
+        let corpus = "abxabc".chars().map(u32::from).collect::<Vec<_>>();
+        let specimen = "abc".chars().map(u32::from).collect::<Vec<_>>();
+        let scores = exact_direct_scores(&corpus, &specimen);
+        assert!((scores[0] - 2.0 / 3.0).abs() < 1e-6);
+        assert_eq!(scores[3], 1.0);
+    }
+
+    #[test]
+    fn direct_lane_is_independent_of_sketch_parameters() {
+        let corpus = "the quick brown fox";
+        let specimen = "quick brown";
+        let first = spectral_scan(
+            corpus,
+            specimen,
+            &NormalizationProfile::default(),
+            &SpectralOptions {
+                repetitions: 1,
+                buckets: 2,
+                minimum_score: 0.0,
+                ..SpectralOptions::default()
+            },
+        )
+        .expect("first");
+        let second = spectral_scan(
+            corpus,
+            specimen,
+            &NormalizationProfile::default(),
+            &SpectralOptions {
+                repetitions: 32,
+                buckets: 4096,
+                minimum_score: 0.0,
+                ..SpectralOptions::default()
+            },
+        )
+        .expect("second");
+        assert_eq!(first[0].offset, second[0].offset);
+        assert_eq!(first[0].score, second[0].score);
+    }
+
+    #[test]
+    fn phase_vectors_have_unit_norm() {
+        for token in [0, 1, 42, u32::MAX] {
+            for repetition in 0..8 {
+                let (cosine, sine) = phase_components(token, repetition, 257);
+                assert!((cosine * cosine + sine * sine - 1.0).abs() < 1e-12);
+            }
+        }
     }
 }
