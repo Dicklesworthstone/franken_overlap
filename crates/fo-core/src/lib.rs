@@ -20,6 +20,7 @@ mod ranking;
 mod search;
 mod segmented;
 pub mod spectral;
+mod storage_v2;
 mod verify;
 mod winnow;
 
@@ -73,6 +74,7 @@ pub use segmented::{
     SegmentedIndexStats, SegmentedManifest, SegmentedSearchResult,
 };
 pub use spectral::{SpectralOptions, SpectralPeak, spectral_scan};
+pub use storage_v2::{IndexFileStats, IndexSaveOptions, IndexStorageFormat};
 pub use verify::{
     Alignment, InfixCandidate, global_levenshtein, myers_infix_candidates, semi_global_banded,
 };
