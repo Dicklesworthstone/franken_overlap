@@ -82,7 +82,7 @@ fn main() {
 fn run() -> CliResult<()> {
     let command = Cli::parse();
     let specimen = specimen_text(command.specimen.as_deref(), command.text)?;
-    let index = Index::load(&command.index)?;
+    let index = Index::load_auto(&command.index)?;
     let search = SearchOptions {
         intent: command.intent.into(),
         max_results: command.limit,
