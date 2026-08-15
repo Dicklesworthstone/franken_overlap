@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
     atomic_write, sha256_hex, unix_timestamp, CorpusDocument, CorpusError, CorpusFailure,
@@ -152,11 +152,34 @@ struct CompanyTickerRow {
 
 #[derive(Debug, Clone, Deserialize)]
 struct SecSubmission {
+    #[serde(deserialize_with = "deserialize_cik")]
     cik: u64,
     name: String,
     #[serde(default)]
     tickers: Vec<String>,
     filings: SecFilings,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum CikRepresentation {
+    Number(u64),
+    String(String),
+}
+
+fn deserialize_cik<'de, D>(deserializer: D) -> std::result::Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error as _;
+
+    match CikRepresentation::deserialize(deserializer)? {
+        CikRepresentation::Number(cik) => Ok(cik),
+        CikRepresentation::String(cik) => cik
+            .trim()
+            .parse::<u64>()
+            .map_err(|error| D::Error::custom(format!("invalid SEC CIK {cik:?}: {error}"))),
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -239,15 +262,15 @@ pub fn fetch_sec_10k(options: Sec10KOptions) -> Result<Sec10KFetchReport> {
     let mut rejected_too_short = 0usize;
     let mut failed = 0usize;
 
-    for (cik, fallback_name, fallback_ticker) in &selected_companies {
-        let submissions_url = format!("{SEC_SUBMISSIONS_BASE}/CIK{cik:010}.json");
+    for (requested_cik, fallback_name, fallback_ticker) in &selected_companies {
+        let submissions_url = format!("{SEC_SUBMISSIONS_BASE}/CIK{requested_cik:010}.json");
         let submission = match client.get(&submissions_url, 64 * 1024 * 1024) {
             Ok(response) => match serde_json::from_slice::<SecSubmission>(&response.bytes) {
                 Ok(submission) => submission,
                 Err(error) => {
                     failed += 1;
                     manifest.record_failure(CorpusFailure {
-                        id: format!("CIK{cik:010}"),
+                        id: format!("CIK{requested_cik:010}"),
                         source_url: Some(response.final_url),
                         message: error.to_string(),
                         observed_at_unix: unix_timestamp(),
@@ -258,7 +281,7 @@ pub fn fetch_sec_10k(options: Sec10KOptions) -> Result<Sec10KFetchReport> {
             Err(error) => {
                 failed += 1;
                 manifest.record_failure(CorpusFailure {
-                    id: format!("CIK{cik:010}"),
+                    id: format!("CIK{requested_cik:010}"),
                     source_url: Some(submissions_url),
                     message: error.to_string(),
                     observed_at_unix: unix_timestamp(),
@@ -266,6 +289,21 @@ pub fn fetch_sec_10k(options: Sec10KOptions) -> Result<Sec10KFetchReport> {
                 continue;
             }
         };
+        if submission.cik != *requested_cik {
+            failed += 1;
+            manifest.record_failure(CorpusFailure {
+                id: format!("CIK{requested_cik:010}"),
+                source_url: Some(format!(
+                    "{SEC_SUBMISSIONS_BASE}/CIK{requested_cik:010}.json"
+                )),
+                message: format!(
+                    "submission CIK {} did not match requested CIK {}",
+                    submission.cik, requested_cik
+                ),
+                observed_at_unix: unix_timestamp(),
+            });
+            continue;
+        }
         let issuer = if submission.name.trim().is_empty() {
             fallback_name.clone()
         } else {
@@ -513,9 +551,10 @@ fn filing_to_text(bytes: &[u8]) -> Result<String> {
 }
 
 fn clean_filing_text(input: &str) -> String {
-    let mut output = String::with_capacity(input.len());
+    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
+    let mut output = String::with_capacity(normalized.len());
     let mut blank_lines = 0usize;
-    for line in input.replace("\r\n", "\n").replace('\r', "\n").lines() {
+    for line in normalized.lines() {
         let trimmed = line.trim_end();
         if trimmed.trim().is_empty() {
             blank_lines += 1;
@@ -565,7 +604,9 @@ fn stable_mix(mut value: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{clean_filing_text, valid_iso_date};
+    use serde::Deserialize;
+
+    use super::{clean_filing_text, valid_iso_date, SecSubmission};
 
     #[test]
     fn validates_iso_dates() {
@@ -577,5 +618,26 @@ mod tests {
     #[test]
     fn collapses_excess_blank_lines() {
         assert_eq!(clean_filing_text("a\n\n\n\nb\n"), "a\n\nb");
+    }
+
+    #[test]
+    fn accepts_string_cik_in_submission_json() {
+        let submission = serde_json::from_str::<SecSubmission>(
+            r#"{
+                "cik":"0000320193",
+                "name":"Apple Inc.",
+                "tickers":["AAPL"],
+                "filings":{"recent":{
+                    "accessionNumber":[],
+                    "filingDate":[],
+                    "reportDate":[],
+                    "form":[],
+                    "primaryDocument":[],
+                    "primaryDocDescription":[]
+                }}
+            }"#,
+        )
+        .expect("submission");
+        assert_eq!(submission.cik, 320_193);
     }
 }
