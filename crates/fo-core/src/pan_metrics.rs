@@ -34,7 +34,9 @@ impl PanAnnotation {
             }
             self.source_offset
                 .checked_add(self.source_length)
-                .ok_or_else(|| FoError::InvalidConfig("PAN source span overflows usize".to_owned()))?;
+                .ok_or_else(|| {
+                    FoError::InvalidConfig("PAN source span overflows usize".to_owned())
+                })?;
         }
         Ok(())
     }
@@ -139,12 +141,14 @@ fn case_recall(case: &PanAnnotation, detections: &[&PanAnnotation]) -> f64 {
 
     let this_intervals = overlapping
         .iter()
-        .filter_map(|detection| clipped_overlap(
-            case.this_offset,
-            case.this_end(),
-            detection.this_offset,
-            detection.this_end(),
-        ))
+        .filter_map(|detection| {
+            clipped_overlap(
+                case.this_offset,
+                case.this_end(),
+                detection.this_offset,
+                detection.this_end(),
+            )
+        })
         .collect::<Vec<_>>();
     let mut detected = interval_union_length(&this_intervals);
     let mut denominator = case.this_length;
@@ -152,12 +156,14 @@ fn case_recall(case: &PanAnnotation, detections: &[&PanAnnotation]) -> f64 {
     if case.is_external {
         let source_intervals = overlapping
             .iter()
-            .filter_map(|detection| clipped_overlap(
-                case.source_offset,
-                case.source_end(),
-                detection.source_offset,
-                detection.source_end(),
-            ))
+            .filter_map(|detection| {
+                clipped_overlap(
+                    case.source_offset,
+                    case.source_end(),
+                    detection.source_offset,
+                    detection.source_end(),
+                )
+            })
             .collect::<Vec<_>>();
         detected = detected.saturating_add(interval_union_length(&source_intervals));
         denominator = denominator.saturating_add(case.source_length);
@@ -290,7 +296,10 @@ fn count_axis(annotations: &[PanAnnotation], source: bool) -> usize {
                 annotation.this_end(),
             )
         };
-        by_reference.entry(reference).or_default().push((start, end));
+        by_reference
+            .entry(reference)
+            .or_default()
+            .push((start, end));
     }
     by_reference
         .into_values()
@@ -335,7 +344,12 @@ fn is_overlapping(left: &PanAnnotation, right: &PanAnnotation) -> bool {
     }
 }
 
-fn intervals_overlap(left_start: usize, left_end: usize, right_start: usize, right_end: usize) -> bool {
+fn intervals_overlap(
+    left_start: usize,
+    left_end: usize,
+    right_start: usize,
+    right_end: usize,
+) -> bool {
     right_end > left_start && right_start < left_end
 }
 
@@ -385,7 +399,12 @@ fn harmonic_mean(left: f64, right: f64) -> f64 {
 mod tests {
     use super::{PanAnnotation, pan_evaluate};
 
-    fn annotation(this_offset: usize, this_length: usize, source_offset: usize, source_length: usize) -> PanAnnotation {
+    fn annotation(
+        this_offset: usize,
+        this_length: usize,
+        source_offset: usize,
+        source_length: usize,
+    ) -> PanAnnotation {
         PanAnnotation {
             this_reference: "suspicious.txt".to_owned(),
             this_offset,
@@ -400,7 +419,8 @@ mod tests {
     #[test]
     fn exact_detection_is_perfect() {
         let case = annotation(10, 100, 20, 120);
-        let report = pan_evaluate(std::slice::from_ref(&case), &[case]).expect("report");
+        let detection = case.clone();
+        let report = pan_evaluate(&[case], &[detection]).expect("report");
         assert_eq!(report.macro_recall, 1.0);
         assert_eq!(report.macro_precision, 1.0);
         assert_eq!(report.micro_recall, 1.0);
