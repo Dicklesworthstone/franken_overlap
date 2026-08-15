@@ -42,7 +42,7 @@ pub struct SegmentDocumentRecord {
     pub deleted: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SegmentedManifest {
     pub format_version: u32,
     pub generation: u64,
@@ -118,14 +118,14 @@ impl SegmentedIndex {
         config.validate()?;
         let directory = directory.as_ref();
         fs::create_dir_all(directory).map_err(|error| FoError::io(directory, error))?;
-        let manifest_path = directory.join(MANIFEST_FILE);
-        if manifest_path.exists() {
+        if directory.join(MANIFEST_FILE).exists() {
             return Err(FoError::InvalidConfig(format!(
                 "segmented index already exists at {}",
                 directory.display()
             )));
         }
         let _lock = WriterLock::acquire(directory)?;
+        ensure_empty_directory_except_lock(directory)?;
         let manifest = SegmentedManifest {
             format_version: SEGMENTED_FORMAT_VERSION,
             generation: 0,
@@ -165,21 +165,17 @@ impl SegmentedIndex {
 
     #[must_use]
     pub fn stats(&self) -> SegmentedIndexStats {
+        let active_documents = self
+            .manifest
+            .documents
+            .iter()
+            .filter(|document| !document.deleted)
+            .count();
         SegmentedIndexStats {
             generation: self.manifest.generation,
             segments: self.manifest.segments.len(),
-            active_documents: self
-                .manifest
-                .documents
-                .iter()
-                .filter(|document| !document.deleted)
-                .count(),
-            deleted_documents: self
-                .manifest
-                .documents
-                .iter()
-                .filter(|document| document.deleted)
-                .count(),
+            active_documents,
+            deleted_documents: self.manifest.documents.len() - active_documents,
             physical_documents: self
                 .manifest
                 .segments
@@ -289,8 +285,8 @@ impl SegmentedIndex {
             found.insert(document.path.clone());
             deleted_document_ids.push(document.global_document_id);
         }
-        let missing_paths = requested.difference(&found).cloned().collect::<Vec<_>>();
         deleted_document_ids.sort_unstable();
+        let missing_paths = requested.difference(&found).cloned().collect::<Vec<_>>();
         if !deleted_document_ids.is_empty() {
             next.generation = next.generation.checked_add(1).ok_or_else(|| {
                 FoError::InvalidConfig("manifest generation is exhausted".to_owned())
@@ -314,17 +310,14 @@ impl SegmentedIndex {
         options.validate()?;
         validate_manifest(&self.manifest)?;
         let active = active_documents_by_segment(&self.manifest);
-        let mut results = Vec::<SegmentedSearchResult>::new();
-        let mut per_segment_options = options.clone();
-        per_segment_options.max_results = options.max_candidates.max(options.max_results);
+        let mut results = Vec::new();
+        let mut segment_options = options.clone();
+        segment_options.max_results = options.max_candidates.max(options.max_results);
 
         for descriptor in &self.manifest.segments {
             let Some(documents) = active.get(&descriptor.id) else {
                 continue;
             };
-            if documents.is_empty() {
-                continue;
-            }
             let index = Index::load(self.directory.join(&descriptor.filename))?;
             if index.config != self.manifest.config {
                 return Err(FoError::InvalidIndex(format!(
@@ -332,7 +325,7 @@ impl SegmentedIndex {
                     descriptor.id
                 )));
             }
-            for result in index.search(specimen, &per_segment_options)? {
+            for result in index.search(specimen, &segment_options)? {
                 let Some(record) = documents.get(&result.document_id) else {
                     continue;
                 };
@@ -342,11 +335,10 @@ impl SegmentedIndex {
                         descriptor.id, result.document_id
                     )));
                 }
-                let fused_score = stable_cross_segment_score(&result, options.intent);
                 results.push(SegmentedSearchResult {
                     global_document_id: record.global_document_id,
                     segment_id: descriptor.id,
-                    fused_score,
+                    fused_score: stable_cross_segment_score(&result, options.intent),
                     result,
                 });
             }
@@ -373,11 +365,11 @@ impl SegmentedIndex {
         let _lock = WriterLock::acquire(&self.directory)?;
         self.ensure_current()?;
         let old_descriptors = self.manifest.segments.clone();
-        let old_segments = old_descriptors.len();
         let mut active_documents = load_active_documents(&self.directory, &self.manifest)?;
         active_documents.sort_unstable_by_key(|document| document.global_document_id);
 
         let mut next = self.manifest.clone();
+        let mut new_segment_path = None;
         let new_descriptor = if active_documents.is_empty() {
             None
         } else {
@@ -393,10 +385,12 @@ impl SegmentedIndex {
             }
             let index = builder.build()?;
             index.save(&path)?;
+            let descriptor = describe_segment(segment_id, filename, &path, index.stats())?;
+            new_segment_path = Some(path);
             next.next_segment_id = next.next_segment_id.checked_add(1).ok_or_else(|| {
                 FoError::InvalidConfig("segment id space is exhausted".to_owned())
             })?;
-            Some(describe_segment(segment_id, filename, &path, index.stats())?)
+            Some(descriptor)
         };
 
         let location_by_global = active_documents
@@ -434,13 +428,18 @@ impl SegmentedIndex {
             FoError::InvalidConfig("manifest generation is exhausted".to_owned())
         })?;
         validate_manifest(&next)?;
-        write_manifest(&self.directory, &next)?;
+        if let Err(error) = write_manifest(&self.directory, &next) {
+            if let Some(path) = new_segment_path {
+                let _ = fs::remove_file(path);
+            }
+            return Err(error);
+        }
         self.manifest = next;
 
-        let retained_filename = new_descriptor.as_ref().map(|segment| segment.filename.as_str());
+        let retained = new_descriptor.as_ref().map(|segment| segment.filename.as_str());
         let mut cleanup_failures = Vec::new();
-        for descriptor in old_descriptors {
-            if Some(descriptor.filename.as_str()) == retained_filename {
+        for descriptor in &old_descriptors {
+            if Some(descriptor.filename.as_str()) == retained {
                 continue;
             }
             let path = self.directory.join(&descriptor.filename);
@@ -460,7 +459,7 @@ impl SegmentedIndex {
                 .iter()
                 .filter(|document| document.deleted)
                 .count(),
-            old_segments,
+            old_segments: old_descriptors.len(),
             new_segments: self.manifest.segments.len(),
             cleanup_failures,
         })
@@ -482,8 +481,7 @@ impl SegmentedIndex {
                     metadata.len()
                 )));
             }
-            let hash = hash_file(&path)?;
-            if hash != descriptor.content_hash {
+            if hash_file(&path)? != descriptor.content_hash {
                 return Err(FoError::InvalidIndex(format!(
                     "segment {} content hash mismatch",
                     descriptor.id
@@ -492,7 +490,7 @@ impl SegmentedIndex {
             let index = Index::load(&path)?;
             if index.config != self.manifest.config || index.stats() != descriptor.stats {
                 return Err(FoError::InvalidIndex(format!(
-                    "segment {} metadata disagrees with its manifest descriptor",
+                    "segment {} metadata disagrees with the manifest",
                     descriptor.id
                 )));
             }
@@ -525,6 +523,7 @@ impl SegmentedIndex {
 
     fn ensure_current(&self) -> Result<()> {
         let current = read_manifest(&self.directory)?;
+        validate_manifest(&current)?;
         if current.generation != self.manifest.generation {
             return Err(FoError::InvalidConfig(format!(
                 "segmented index generation changed from {} to {}; reopen before writing",
@@ -552,9 +551,6 @@ fn load_active_documents(
         let Some(records) = grouped.get(&descriptor.id) else {
             continue;
         };
-        if records.is_empty() {
-            continue;
-        }
         let index = Index::load(directory.join(&descriptor.filename))?;
         if index.config != manifest.config {
             return Err(FoError::InvalidIndex(format!(
@@ -808,6 +804,19 @@ fn validate_segment_filename(filename: &str) -> Result<()> {
     Ok(())
 }
 
+fn ensure_empty_directory_except_lock(directory: &Path) -> Result<()> {
+    for entry in fs::read_dir(directory).map_err(|error| FoError::io(directory, error))? {
+        let entry = entry.map_err(|error| FoError::io(directory, error))?;
+        if entry.file_name() != WRITER_LOCK_FILE {
+            return Err(FoError::InvalidConfig(format!(
+                "cannot create segmented index in nonempty directory {}",
+                directory.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn segment_filename(segment_id: u64) -> String {
     format!("segment-{segment_id:016x}.foidx")
 }
@@ -901,7 +910,7 @@ impl WriterLock {
                     path.display()
                 ))
             })?;
-        writeln!(file, "pid={} ", std::process::id())
+        writeln!(file, "pid={}", std::process::id())
             .map_err(|error| FoError::io(&path, error))?;
         file.sync_all().map_err(|error| FoError::io(&path, error))?;
         Ok(Self { path })
@@ -917,6 +926,7 @@ impl Drop for WriterLock {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{SegmentDocumentInput, SegmentedIndex};
@@ -956,13 +966,18 @@ mod tests {
         index
             .delete_paths(&["second.txt".to_owned()])
             .expect("delete");
-        let before = index.stats();
-        assert_eq!(before.segments, 2);
-        assert_eq!(before.deleted_documents, 1);
+        assert_eq!(index.stats().segments, 2);
+        assert_eq!(index.stats().deleted_documents, 1);
         let compacted = index.compact().expect("compact");
         assert_eq!(compacted.active_documents, 1);
         assert_eq!(index.stats().segments, 1);
-        assert_eq!(index.verify_storage().expect("verify").verified_active_documents, 1);
+        assert_eq!(
+            index
+                .verify_storage()
+                .expect("verify")
+                .verified_active_documents,
+            1
+        );
 
         let hits = index
             .search(
