@@ -8,6 +8,7 @@ mod composite;
 mod error;
 mod fingerprint;
 mod grouped_metrics;
+#[allow(clippy::cast_lossless, clippy::derivable_impls)]
 mod hybrid;
 mod index;
 mod lexical;
