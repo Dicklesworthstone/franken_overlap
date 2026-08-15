@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod active_learning;
 mod calibration;
 mod chain;
 mod composite;
@@ -17,6 +18,10 @@ pub mod spectral;
 mod verify;
 mod winnow;
 
+pub use active_learning::{
+    ActiveLearningCandidate, ActiveLearningOptions, ActiveLearningSelection,
+    select_active_learning_queue,
+};
 pub use calibration::{
     CALIBRATION_FEATURE_COUNT, CALIBRATION_SCHEMA_VERSION, CalibratedResult, CalibrationModel,
     CalibrationOptions, FeedbackExample, evidence_vector, feature_names,
