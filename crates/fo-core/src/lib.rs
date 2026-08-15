@@ -9,6 +9,7 @@ mod index;
 pub mod metrics;
 mod model;
 mod normalize;
+mod ranking;
 mod search;
 pub mod spectral;
 mod verify;
@@ -34,6 +35,11 @@ pub use model::{
     SearchOptions, SearchResult,
 };
 pub use normalize::{NormalizedText, normalize};
+pub use ranking::{
+    GroupedFeedbackExample, PairwiseRankingOptions, RankedResult, RankingComparison, RankingModel,
+    RANKING_FEATURE_COUNT, RANKING_SCHEMA_VERSION, mine_hard_negatives,
+    ranking_evidence_vector, ranking_feature_names,
+};
 pub use spectral::{SpectralOptions, SpectralPeak, spectral_scan};
 pub use verify::{
     Alignment, InfixCandidate, global_levenshtein, myers_infix_candidates, semi_global_banded,

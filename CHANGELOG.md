@@ -21,6 +21,8 @@ All notable changes to FrankenOverlap are recorded here.
 - End-to-end CLI tests for query intents and fail-closed calibration requirements.
 - Composite fragmented-source aggregation that combines non-overlapping passages, measures union coverage, and detects reordered blocks.
 - `fo-composite` CLI for source attribution and near-duplicate search across moved or interrupted passages.
+- Query-grouped pairwise ranking over hard positive/negative comparisons, with persisted feature standardization and held-out AUPRC reports.
+- Deterministic hard-negative mining and the `fo-rank` fit, compare, mine, and rerank CLI.
 
 ### Changed
 
@@ -30,6 +32,7 @@ All notable changes to FrankenOverlap are recorded here.
 - The formerly quadratic short-query fallback is explicitly work-bounded.
 - Human-readable query output now exposes the evidence needed to audit each ranking decision.
 - The README and quality documentation now describe the implemented system rather than the initial prototype.
+- Removed the obsolete stable/MSRV recovery wrapper; repository validation remains nightly-first.
 
 ## 0.1.0 - 2026-08-14
 
