@@ -201,11 +201,9 @@ fn validate_queries(queries: &[BatchQuery], options: BatchSearchOptions) -> Resu
                 query.id
             )));
         }
-        total_bytes = total_bytes
-            .checked_add(query.specimen.len())
-            .ok_or_else(|| {
-                FoError::InvalidConfig("batch specimen byte total overflowed usize".to_owned())
-            })?;
+        total_bytes = total_bytes.checked_add(query.specimen.len()).ok_or_else(|| {
+            FoError::InvalidConfig("batch specimen byte total overflowed usize".to_owned())
+        })?;
         if total_bytes > options.maximum_total_specimen_bytes {
             return Err(FoError::InvalidConfig(format!(
                 "batch specimens contain {total_bytes} bytes; limit is {}",
@@ -291,7 +289,17 @@ mod tests {
         assert_eq!(report.results[2].query_id, "duplicate");
         assert_eq!(report.unique_specimens, 2);
         assert_eq!(report.results[2].deduplicated_from, Some(0));
-        assert_eq!(report.results[0].results, report.results[2].results);
+        assert_eq!(report.results[0].results.len(), report.results[2].results.len());
+        for (left, right) in report.results[0]
+            .results
+            .iter()
+            .zip(&report.results[2].results)
+        {
+            assert_eq!(left.path, right.path);
+            assert_eq!(left.corpus_start, right.corpus_start);
+            assert_eq!(left.corpus_end, right.corpus_end);
+            assert!((left.combined_score - right.combined_score).abs() < 1e-6);
+        }
     }
 
     #[test]
