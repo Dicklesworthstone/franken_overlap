@@ -8,6 +8,7 @@ mod composite;
 mod error;
 mod fingerprint;
 mod grouped_metrics;
+#[allow(unused_imports)]
 mod hybrid;
 mod index;
 mod lexical;
