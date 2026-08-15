@@ -102,6 +102,12 @@ struct CompareCalibrationCommand {
     calibration_bins: usize,
     #[arg(long)]
     json: bool,
+    /// Fail when calibrated AUPRC improves by less than this amount.
+    #[arg(long)]
+    require_auprc_delta: Option<f64>,
+    /// Fail when calibrated Brier score regresses by more than this amount.
+    #[arg(long)]
+    maximum_brier_regression: Option<f64>,
 }
 
 #[derive(Debug, Args)]
@@ -120,7 +126,7 @@ enum LabelArg {
 }
 
 impl LabelArg {
-    fn is_positive(self) -> bool {
+    fn value(self) -> bool {
         matches!(self, Self::Positive)
     }
 }
@@ -195,7 +201,7 @@ fn run_record_feedback(command: RecordFeedbackCommand) -> CliResult<()> {
         &mut output,
         &FeedbackExample {
             result: result.clone(),
-            label: command.label.is_positive(),
+            label: command.label.value(),
             weight: command.weight,
         },
     )?;
@@ -280,6 +286,22 @@ fn run_compare_calibration(command: CompareCalibrationCommand) -> CliResult<()> 
         );
         println!("Brier delta:   {:+.6}", comparison.brier_delta);
         println!("Log-loss delta:{:+.6}", comparison.log_loss_delta);
+    }
+    if let Some(required) = command.require_auprc_delta
+        && comparison.average_precision_delta < required
+    {
+        return Err(invalid_data(format!(
+            "calibrated AUPRC delta {:+.6} is below required {:+.6}",
+            comparison.average_precision_delta, required
+        )));
+    }
+    if let Some(maximum) = command.maximum_brier_regression
+        && comparison.brier_delta > maximum
+    {
+        return Err(invalid_data(format!(
+            "calibrated Brier regression {:+.6} exceeds maximum {:+.6}",
+            comparison.brier_delta, maximum
+        )));
     }
     Ok(())
 }
