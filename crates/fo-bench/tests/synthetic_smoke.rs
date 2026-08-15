@@ -31,7 +31,7 @@ fn deterministic_quality_floor_holds() {
 
     let report: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("parse synthetic report");
-    assert_eq!(report["documents"], 4);
-    assert_eq!(report["queries"], 16);
-    assert_eq!(report["methods"][0]["name"], "franken_overlap");
+    assert_eq!(report["documents"].as_u64(), Some(4));
+    assert_eq!(report["queries"].as_u64(), Some(16));
+    assert_eq!(report["methods"][0]["name"].as_str(), Some("franken_overlap"));
 }
