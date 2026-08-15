@@ -28,6 +28,9 @@ All notable changes to FrankenOverlap are recorded here.
 - Persisted multi-view indexes spanning short, balanced, and selective q-gram scales.
 - Cross-view span consensus with support ratios, disagreement penalties, weighted evidence, and balanced/high-recall/high-precision presets.
 - `fo-multiview` build, query, and inspect CLI.
+- Query-grouped macro AUPRC, expected tie-aware Recall@k/MRR/nDCG, and deterministic query-bootstrap confidence intervals.
+- Constraint-based operating-threshold selection over every distinct score.
+- `fo-group-eval` CLI for grouped quality reports and production operating points.
 
 ### Changed
 
@@ -41,6 +44,7 @@ All notable changes to FrankenOverlap are recorded here.
 - Dense direct scans are now exact and independent of sketch parameters.
 - Default FFT channel correlations fall from repetitions × buckets to 2 × repetitions.
 - Multi-view consensus penalizes single-scale accidents while retaining a dedicated high-recall preset for noisy text.
+- Quality gates can now distinguish global candidate-stream gains from broadly distributed per-query gains.
 
 ## 0.1.0 - 2026-08-14
 
