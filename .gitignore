@@ -2,8 +2,10 @@
 /corpora/
 /benchmark-artifacts/
 *.foidx
+*.folex
 *.fosegments/
 *.fomv/
+*.fohybrid/
 *.tmp-*
 .DS_Store
 .idea/

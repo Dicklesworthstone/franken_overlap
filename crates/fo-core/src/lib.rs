@@ -9,6 +9,7 @@ mod error;
 mod fingerprint;
 mod grouped_metrics;
 mod index;
+mod lexical;
 pub mod metrics;
 mod model;
 mod multiview;
@@ -42,6 +43,12 @@ pub use grouped_metrics::{
     GroupedLabeledScore, ThresholdConstraints, grouped_evaluation_report, select_operating_point,
 };
 pub use index::{Document, Index, IndexBuilder, IndexEntry};
+pub use lexical::{
+    LexicalByteSpan, LexicalClause, LexicalDocument, LexicalDocumentInput, LexicalField,
+    LexicalIndex, LexicalIndexBuilder, LexicalIndexConfig, LexicalIndexStats, LexicalOccur,
+    LexicalPosting, LexicalQuery, LexicalScoreExplanation, LexicalSearchOptions,
+    LexicalSearchResult, LexicalTermEntry, LEXICAL_INDEX_SCHEMA_VERSION,
+};
 pub use metrics::{
     EvaluationOptions, LabeledScore, PrecisionRecallPoint, PrecisionRecallReport,
     precision_recall_report,
@@ -79,3 +86,24 @@ pub use verify::{
     Alignment, InfixCandidate, global_levenshtein, myers_infix_candidates, semi_global_banded,
 };
 pub use winnow::winnow;
+
+impl PartialOrd for LexicalField {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for LexicalField {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        lexical_field_rank(*self).cmp(&lexical_field_rank(*other))
+    }
+}
+
+const fn lexical_field_rank(field: LexicalField) -> u8 {
+    match field {
+        LexicalField::Title => 0,
+        LexicalField::Body => 1,
+        LexicalField::Tags => 2,
+        LexicalField::Any => 3,
+    }
+}
