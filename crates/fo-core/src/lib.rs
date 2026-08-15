@@ -8,6 +8,7 @@ mod composite;
 mod error;
 mod fingerprint;
 mod grouped_metrics;
+mod hybrid;
 mod index;
 mod lexical;
 pub mod metrics;
@@ -41,6 +42,11 @@ pub use fingerprint::{Feature, Fingerprint, qgram_hashes};
 pub use grouped_metrics::{
     AtKMetric, ConfidenceInterval, GroupedEvaluationOptions, GroupedEvaluationReport,
     GroupedLabeledScore, ThresholdConstraints, grouped_evaluation_report, select_operating_point,
+};
+pub use hybrid::{
+    HybridDocumentInput, HybridIndex, HybridIndexBuilder, HybridIndexConfig, HybridIndexStats,
+    HybridQueryAnalysis, HybridRoute, HybridScoreExplanation, HybridSearchMode,
+    HybridSearchOptions, HybridSearchReport, HybridSearchResult, HYBRID_INDEX_SCHEMA_VERSION,
 };
 pub use index::{Document, Index, IndexBuilder, IndexEntry};
 pub use lexical::{
