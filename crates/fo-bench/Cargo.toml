@@ -16,8 +16,10 @@ path = "src/main.rs"
 [dependencies]
 clap.workspace = true
 fo-core.workspace = true
+fo-corpus.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+unicode-segmentation.workspace = true
 
 [lints]
 workspace = true
