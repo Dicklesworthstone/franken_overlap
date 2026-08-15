@@ -262,7 +262,7 @@ fn print_results(results: &[MultiViewSearchResult]) {
             representative.corpus_end,
             result.fused_score,
             result.view_support,
-            result.evidence.len().max(result.view_support),
+            result.total_views,
             result.score_disagreement,
             result.weighted_edit_similarity,
             result.weighted_query_coverage,
