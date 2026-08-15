@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod calibration;
 mod chain;
 mod error;
 mod fingerprint;
@@ -12,6 +13,10 @@ pub mod spectral;
 mod verify;
 mod winnow;
 
+pub use calibration::{
+    CALIBRATION_FEATURE_COUNT, CALIBRATION_SCHEMA_VERSION, CalibratedResult, CalibrationModel,
+    CalibrationOptions, FeedbackExample, evidence_vector, feature_names,
+};
 pub use chain::{Anchor, AnchorChain, ChainOptions, chain_anchors};
 pub use error::{FoError, Result};
 pub use fingerprint::{Feature, Fingerprint, qgram_hashes};
