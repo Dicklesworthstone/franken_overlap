@@ -3,8 +3,8 @@
 mod gutenberg;
 mod http;
 mod model;
-#[allow(unused_imports)]
 mod sec;
+mod section;
 
 pub use gutenberg::{
     fetch_gutenberg, GutenbergFetchReport, GutenbergOptions, GutenbergPreset,
@@ -19,4 +19,7 @@ pub use model::{
 pub use sec::{
     fetch_sec_10k, Sec10KFetchReport, Sec10KOptions, SecPreset, SEC_ARCHIVES_BASE,
     SEC_SUBMISSIONS_BASE, SEC_TICKERS_URL,
+};
+pub use section::{
+    section_corpus, SectionCorpusOptions, SectionCorpusReport, SectionStrategy,
 };
