@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
@@ -105,7 +105,6 @@ struct ScoreRow {
 #[derive(Debug, Clone)]
 struct PreparedRow {
     query_id: String,
-    candidate_id: String,
     label: bool,
     lexical_score: f64,
     overlap_score: f64,
@@ -180,21 +179,7 @@ fn run() -> CliResult<()> {
 }
 
 fn run_fit(command: FitCommand) -> CliResult<()> {
-    if command.shortlist == 0 || command.shortlist > 10_000 {
-        return Err(invalid_input("--shortlist must lie in 1..=10,000"));
-    }
-    for (name, value) in [
-        ("--require-test-micro-delta", command.require_test_micro_delta),
-        ("--require-test-macro-delta", command.require_test_macro_delta),
-        (
-            "--require-test-recall-at-1-delta",
-            command.require_test_recall_at_1_delta,
-        ),
-    ] {
-        if !value.is_finite() {
-            return Err(invalid_input(format!("{name} must be finite")));
-        }
-    }
+    validate_fit_command(&command)?;
     let input_bytes = fs::read(&command.input)?;
     let rows = read_rows(&input_bytes, &command.input)?;
     let prepared = prepare_rows(
@@ -215,7 +200,9 @@ fn run_fit(command: FitCommand) -> CliResult<()> {
             })
         })
         .collect::<fo_core::Result<Vec<_>>>()?;
-    train_evaluations.sort_unstable_by(compare_candidate_evaluations);
+    train_evaluations.sort_unstable_by(|left, right| {
+        compare_candidate_evaluations(right, left)
+    });
     train_evaluations.truncate(command.shortlist.min(train_evaluations.len()));
     let selected = train_evaluations
         .iter()
@@ -291,25 +278,7 @@ fn run_fit(command: FitCommand) -> CliResult<()> {
     } else {
         print_tuning_report(&report, &command.output);
     }
-    if report.test_micro_delta < command.require_test_micro_delta {
-        return Err(invalid_input(format!(
-            "test micro-AUPRC delta {:+.6} is below required {:+.6}",
-            report.test_micro_delta, command.require_test_micro_delta
-        )));
-    }
-    if report.test_macro_delta < command.require_test_macro_delta {
-        return Err(invalid_input(format!(
-            "test macro-AUPRC delta {:+.6} is below required {:+.6}",
-            report.test_macro_delta, command.require_test_macro_delta
-        )));
-    }
-    if report.test_recall_at_1_delta < command.require_test_recall_at_1_delta {
-        return Err(invalid_input(format!(
-            "test Recall@1 delta {:+.6} is below required {:+.6}",
-            report.test_recall_at_1_delta, command.require_test_recall_at_1_delta
-        )));
-    }
-    Ok(())
+    enforce_fit_gates(&command, &report)
 }
 
 fn run_apply(command: ApplyCommand) -> CliResult<()> {
@@ -321,10 +290,13 @@ fn run_apply(command: ApplyCommand) -> CliResult<()> {
         None,
     )?;
     let profile = read_profile(&command.profile)?;
-    let parameters = profile_parameters(&profile);
-    let scores = score_rows(&prepared, parameters, None);
+    let scores = score_rows(&prepared, profile_parameters(&profile), None);
     write_grouped_scores(&command.output, &scores)?;
-    println!("Wrote {} tuned scores to {}", scores.len(), command.output.display());
+    println!(
+        "Wrote {} tuned scores to {}",
+        scores.len(),
+        command.output.display()
+    );
     Ok(())
 }
 
@@ -362,6 +334,47 @@ fn run_compare(command: CompareCommand) -> CliResult<()> {
         println!("Macro delta:           {:+.6}", report.macro_delta);
         println!("MRR delta:             {:+.6}", report.mrr_delta);
         println!("Recall@1 delta:        {:+.6}", report.recall_at_1_delta);
+    }
+    Ok(())
+}
+
+fn validate_fit_command(command: &FitCommand) -> CliResult<()> {
+    if command.shortlist == 0 || command.shortlist > 10_000 {
+        return Err(invalid_input("--shortlist must lie in 1..=10,000"));
+    }
+    for (name, value) in [
+        ("--require-test-micro-delta", command.require_test_micro_delta),
+        ("--require-test-macro-delta", command.require_test_macro_delta),
+        (
+            "--require-test-recall-at-1-delta",
+            command.require_test_recall_at_1_delta,
+        ),
+    ] {
+        if !value.is_finite() {
+            return Err(invalid_input(format!("{name} must be finite")));
+        }
+    }
+    Ok(())
+}
+
+fn enforce_fit_gates(command: &FitCommand, report: &TuningReport) -> CliResult<()> {
+    if report.test_micro_delta < command.require_test_micro_delta {
+        return Err(invalid_input(format!(
+            "test micro-AUPRC delta {:+.6} is below required {:+.6}",
+            report.test_micro_delta, command.require_test_micro_delta
+        )));
+    }
+    if report.test_macro_delta < command.require_test_macro_delta {
+        return Err(invalid_input(format!(
+            "test macro-AUPRC delta {:+.6} is below required {:+.6}",
+            report.test_macro_delta, command.require_test_macro_delta
+        )));
+    }
+    if report.test_recall_at_1_delta < command.require_test_recall_at_1_delta {
+        return Err(invalid_input(format!(
+            "test Recall@1 delta {:+.6} is below required {:+.6}",
+            report.test_recall_at_1_delta, command.require_test_recall_at_1_delta
+        )));
     }
     Ok(())
 }
@@ -424,11 +437,6 @@ fn prepare_rows(
                 .transpose()?;
             prepared.push(PreparedRow {
                 query_id: row.query_id.clone(),
-                candidate_id: if row.candidate_id.is_empty() {
-                    format!("candidate-{index:08}")
-                } else {
-                    row.candidate_id.clone()
-                },
                 label: row.label,
                 lexical_score: lexical[index],
                 overlap_score: overlap[index],
@@ -497,13 +505,18 @@ fn query_splits(rows: &[PreparedRow], seed: u64) -> CliResult<QuerySplits> {
     if queries.len() < 5 {
         return Err(invalid_input("at least five query groups are required"));
     }
-    let train_end = (queries.len() * 6 / 10).max(1).min(queries.len() - 2);
-    let validation_end = (queries.len() * 8 / 10)
+    let train_end = (queries.len().saturating_mul(6) / 10)
+        .max(1)
+        .min(queries.len() - 2);
+    let validation_end = (queries.len().saturating_mul(8) / 10)
         .max(train_end + 1)
         .min(queries.len() - 1);
     Ok(QuerySplits {
         train: queries[..train_end].iter().cloned().collect(),
-        validation: queries[train_end..validation_end].iter().cloned().collect(),
+        validation: queries[train_end..validation_end]
+            .iter()
+            .cloned()
+            .collect(),
         test: queries[validation_end..].iter().cloned().collect(),
     })
 }
@@ -533,8 +546,7 @@ fn evaluate(
     queries: &BTreeSet<String>,
     parameters: FusionParameters,
 ) -> fo_core::Result<HybridMetricSnapshot> {
-    let scores = score_rows(rows, parameters, Some(queries));
-    metric_snapshot(&scores)
+    metric_snapshot(&score_rows(rows, parameters, Some(queries)))
 }
 
 fn evaluate_baseline(
@@ -561,10 +573,9 @@ fn score_rows(
     rows.iter()
         .filter(|row| queries.is_none_or(|queries| queries.contains(&row.query_id)))
         .map(|row| {
-            let rank_score = rrf_score(row, parameters.rrf_constant);
             let score = parameters.lexical_weight * row.lexical_score
                 + parameters.overlap_weight * row.overlap_score
-                + parameters.rrf_weight * rank_score;
+                + parameters.rrf_weight * rrf_score(row, parameters.rrf_constant);
             GroupedLabeledScore {
                 query_id: row.query_id.clone(),
                 score: score.clamp(0.0, 1.0),
@@ -603,7 +614,10 @@ fn metric_snapshot(examples: &[GroupedLabeledScore]) -> fo_core::Result<HybridMe
         micro_auprc: report.micro.average_precision,
         macro_auprc: report.macro_average_precision,
         mean_reciprocal_rank: report.mean_reciprocal_rank,
-        recall_at_1: report.recall_at_k.first().map_or(0.0, |metric| metric.value),
+        recall_at_1: report
+            .recall_at_k
+            .first()
+            .map_or(0.0, |metric| metric.value),
     })
 }
 
@@ -689,20 +703,29 @@ fn temporary_path(path: &Path) -> PathBuf {
 }
 
 fn print_tuning_report(report: &TuningReport, output: &Path) {
-    println!("Wrote profile:        {}", output.display());
-    println!("Input fingerprint:    {}", report.input_fingerprint);
-    println!("Queries train/val/test:{}/{}/{}", report.train_queries, report.validation_queries, report.test_queries);
-    println!("Configurations:       {}", report.evaluated_configurations);
-    println!("Lexical weight:       {:.4}", report.selected.lexical_weight);
-    println!("Overlap weight:       {:.4}", report.selected.overlap_weight);
-    println!("RRF weight:           {:.4}", report.selected.rrf_weight);
-    println!("RRF constant:         {:.1}", report.selected.rrf_constant);
-    println!("Validation macro AP:  {:.6}", report.validation_metrics.macro_auprc);
-    println!("Test micro AP:        {:.6}", report.test_metrics.micro_auprc);
-    println!("Test macro AP:        {:.6}", report.test_metrics.macro_auprc);
-    println!("Test micro delta:     {:+.6}", report.test_micro_delta);
-    println!("Test macro delta:     {:+.6}", report.test_macro_delta);
-    println!("Test Recall@1 delta:  {:+.6}", report.test_recall_at_1_delta);
+    println!("Wrote profile:         {}", output.display());
+    println!("Input fingerprint:     {}", report.input_fingerprint);
+    println!(
+        "Queries train/val/test:{}/{}/{}",
+        report.train_queries, report.validation_queries, report.test_queries
+    );
+    println!("Configurations:        {}", report.evaluated_configurations);
+    println!("Lexical weight:        {:.4}", report.selected.lexical_weight);
+    println!("Overlap weight:        {:.4}", report.selected.overlap_weight);
+    println!("RRF weight:            {:.4}", report.selected.rrf_weight);
+    println!("RRF constant:          {:.1}", report.selected.rrf_constant);
+    println!(
+        "Validation macro AP:   {:.6}",
+        report.validation_metrics.macro_auprc
+    );
+    println!("Test micro AP:         {:.6}", report.test_metrics.micro_auprc);
+    println!("Test macro AP:         {:.6}", report.test_metrics.macro_auprc);
+    println!("Test micro delta:      {:+.6}", report.test_micro_delta);
+    println!("Test macro delta:      {:+.6}", report.test_macro_delta);
+    println!(
+        "Test Recall@1 delta:   {:+.6}",
+        report.test_recall_at_1_delta
+    );
 }
 
 fn stable_hash(value: &str, seed: u64) -> u64 {
@@ -731,9 +754,7 @@ fn invalid_input(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{
-        parameter_grid, prepare_rows, query_splits, CandidateEvaluation, ScoreRow,
-    };
+    use super::{parameter_grid, prepare_rows, query_splits, ScoreRow};
 
     #[test]
     fn parameter_grid_contains_pure_and_mixed_models() {
@@ -754,14 +775,20 @@ mod tests {
                     label: candidate == 0,
                     scores: BTreeMap::from([
                         ("lex".to_owned(), if candidate == 0 { 0.8 } else { 0.2 }),
-                        ("overlap".to_owned(), if candidate == 0 { 0.9 } else { 0.1 }),
-                        ("baseline".to_owned(), if candidate == 0 { 0.7 } else { 0.3 }),
+                        (
+                            "overlap".to_owned(),
+                            if candidate == 0 { 0.9 } else { 0.1 },
+                        ),
+                        (
+                            "baseline".to_owned(),
+                            if candidate == 0 { 0.7 } else { 0.3 },
+                        ),
                     ]),
                 });
             }
         }
-        let prepared = prepare_rows(&rows, "lex", "overlap", Some("baseline"))
-            .expect("prepare");
+        let prepared =
+            prepare_rows(&rows, "lex", "overlap", Some("baseline")).expect("prepare");
         let splits = query_splits(&prepared, 7).expect("splits");
         assert_eq!(
             splits.train.len() + splits.validation.len() + splits.test.len(),
@@ -769,6 +796,5 @@ mod tests {
         );
         assert!(splits.train.is_disjoint(&splits.validation));
         assert!(splits.validation.is_disjoint(&splits.test));
-        let _type_anchor: Option<CandidateEvaluation> = None;
     }
 }
