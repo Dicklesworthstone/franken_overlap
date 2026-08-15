@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![allow(clippy::too_many_arguments)]
 
 #[path = "../retrieval_baselines.rs"]
 mod retrieval_baselines;
@@ -76,6 +77,12 @@ fn main() {
 fn run() -> CliResult<()> {
     let command = Cli::parse();
     let queries = read_queries(&command.queries)?;
+    let _relation_group_count = queries
+        .iter()
+        .map(|query| query.relation_key.as_str())
+        .filter(|relation| !relation.is_empty())
+        .collect::<BTreeSet<_>>()
+        .len();
     let options = ScenarioBenchmarkOptions {
         requested_corpus_sizes: command.corpus_sizes,
         maximum_documents: command.maximum_documents,
