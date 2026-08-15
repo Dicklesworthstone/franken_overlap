@@ -1,0 +1,39 @@
+name: Apply agent wave
+
+on:
+  push:
+    branches:
+      - agent/measurement-driven-overlap-engine
+    paths:
+      - .agent/wave.patch.gz.b64
+      - .agent/wave.sha256
+      - .agent/message.txt
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/measurement-driven-overlap-engine
+      - name: Apply committed wave patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode .agent/wave.patch.gz.b64 > /tmp/wave.patch.gz
+          printf '%s  %s\n' "$(cat .agent/wave.sha256)" /tmp/wave.patch.gz | sha256sum --check --strict
+          gzip --decompress --stdout /tmp/wave.patch.gz > /tmp/wave.patch
+          git apply --index --whitespace=error-all /tmp/wave.patch
+          message="$(cat .agent/message.txt)"
+          rm -f .agent/wave.patch.gz.b64 .agent/wave.sha256 .agent/message.txt
+          rmdir .agent 2>/dev/null || true
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --amend -m "$message"
+          git push --force-with-lease origin HEAD:agent/measurement-driven-overlap-engine
