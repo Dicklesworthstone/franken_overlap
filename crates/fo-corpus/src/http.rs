@@ -138,7 +138,7 @@ impl DownloadClient {
     }
 }
 
-fn read_response(mut response: Response, maximum_bytes: u64) -> Result<FetchResponse> {
+fn read_response(response: Response, maximum_bytes: u64) -> Result<FetchResponse> {
     let final_url = response.url().to_string();
     if response
         .content_length()
