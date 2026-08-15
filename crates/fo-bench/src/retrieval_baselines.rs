@@ -171,9 +171,6 @@ impl PreparedBaselines {
         normalized_query: &NormalizedText,
         maximum_cells: u64,
     ) -> BaselineResult<ExhaustiveQueryOutput> {
-        if maximum_cells == 0 {
-            return Err(invalid("exhaustive query cell budget must be positive"));
-        }
         let mut scores = vec![None; self.documents.len()];
         let mut alignments = vec![None; self.documents.len()];
         let mut cells = 0u64;
@@ -295,10 +292,9 @@ pub fn exhaustive_semi_global(
         };
         for (text_index, &text_token) in text.iter().enumerate() {
             let column = text_index + 1;
+            let substitution = if pattern_token == text_token { 0 } else { 1 };
             let diagonal = Cell {
-                cost: previous[column - 1]
-                    .cost
-                    .saturating_add(u32::from(pattern_token != text_token)),
+                cost: previous[column - 1].cost.saturating_add(substitution),
                 start: previous[column - 1].start,
             };
             let delete_pattern = Cell {
@@ -359,7 +355,10 @@ fn jaccard(left: &BTreeSet<Fingerprint>, right: &BTreeSet<Fingerprint>) -> f64 {
         return 1.0;
     }
     let intersection = left.intersection(right).count();
-    let union = left.len().saturating_add(right.len()).saturating_sub(intersection);
+    let union = left
+        .len()
+        .saturating_add(right.len())
+        .saturating_sub(intersection);
     ratio(intersection, union)
 }
 
@@ -382,7 +381,11 @@ fn simhash(fingerprints: &BTreeSet<Fingerprint>) -> u64 {
         .iter()
         .enumerate()
         .fold(0u64, |output, (bit, accumulator)| {
-            output | (u64::from(*accumulator >= 0) << bit)
+            if *accumulator >= 0 {
+                output | (1u64 << bit)
+            } else {
+                output
+            }
         })
 }
 
@@ -453,9 +456,7 @@ fn invalid(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        TokenSpan, exhaustive_semi_global, expected_token_span, span_accuracy,
-    };
+    use super::{TokenSpan, exhaustive_semi_global, expected_token_span, span_accuracy};
     use fo_core::NormalizationProfile;
 
     #[test]
