@@ -98,9 +98,7 @@ pub struct SemanticFusionOptions {
     pub reciprocal_rank_weight: f32,
     pub reciprocal_rank_constant: f32,
     pub agreement_bonus: f32,
-    /// Include candidates with semantic evidence but no lexical or overlap result.
     pub allow_semantic_only: bool,
-    /// Maximum number of semantic-only candidates retained when enabled.
     pub maximum_semantic_only: usize,
 }
 
@@ -168,6 +166,7 @@ impl SemanticFusionOptions {
 pub enum SemanticRelationshipClass {
     TextualProvenance,
     TextualAndSemantic,
+    LexicalOnly,
     LexicalAndSemantic,
     SemanticOnly,
 }
@@ -266,16 +265,16 @@ pub fn fuse_semantic_candidates(
         .count();
 
     let mut output = Vec::new();
-    let mut semantic_only_retained = 0usize;
+    let mut semantic_only_seen = 0usize;
     for (external_id, mut candidate) in candidates {
         if candidate.hybrid.is_none() && !options.allow_semantic_only {
             continue;
         }
         if candidate.hybrid.is_none() {
-            if semantic_only_retained >= options.maximum_semantic_only {
+            if semantic_only_seen >= options.maximum_semantic_only {
                 continue;
             }
-            semantic_only_retained += 1;
+            semantic_only_seen += 1;
         }
         candidate.semantic.sort_unstable_by(|left, right| {
             left.0
@@ -296,15 +295,18 @@ pub fn fuse_semantic_candidates(
             options.reciprocal_rank_constant,
         );
         let agreement = candidate.hybrid.is_some() && !candidate.semantic.is_empty();
-        let active_weight = if candidate.hybrid.is_some() {
+        let hybrid_component = if candidate.hybrid.is_some() {
             options.hybrid_weight
         } else {
             0.0
-        } + if candidate.semantic.is_empty() {
+        };
+        let semantic_component = if candidate.semantic.is_empty() {
             0.0
         } else {
             options.semantic_weight
-        } + options.reciprocal_rank_weight;
+        };
+        let active_weight =
+            hybrid_component + semantic_component + options.reciprocal_rank_weight;
         let weighted = options.hybrid_weight * hybrid_score
             + options.semantic_weight * semantic_score
             + options.reciprocal_rank_weight * reciprocal_rank_score;
@@ -335,14 +337,17 @@ pub fn fuse_semantic_candidates(
             .as_ref()
             .is_some_and(|(_, result)| result.lexical.is_some());
         let semantic_only = candidate.hybrid.is_none();
+        let has_semantic = !candidate.semantic.is_empty();
         let relationship = if semantic_only {
             SemanticRelationshipClass::SemanticOnly
-        } else if textual_provenance_supported && !candidate.semantic.is_empty() {
+        } else if textual_provenance_supported && has_semantic {
             SemanticRelationshipClass::TextualAndSemantic
         } else if textual_provenance_supported {
             SemanticRelationshipClass::TextualProvenance
-        } else {
+        } else if has_semantic {
             SemanticRelationshipClass::LexicalAndSemantic
+        } else {
+            SemanticRelationshipClass::LexicalOnly
         };
         let title = candidate
             .hybrid
@@ -390,7 +395,11 @@ pub fn fuse_semantic_candidates(
         right
             .score
             .total_cmp(&left.score)
-            .then_with(|| right.textual_provenance_supported.cmp(&left.textual_provenance_supported))
+            .then_with(|| {
+                right
+                    .textual_provenance_supported
+                    .cmp(&left.textual_provenance_supported)
+            })
             .then_with(|| left.external_id.cmp(&right.external_id))
     });
     output.truncate(options.max_results);
@@ -545,6 +554,10 @@ mod tests {
         assert_eq!(
             fused.results[0].relationship,
             SemanticRelationshipClass::TextualAndSemantic
+        );
+        assert_eq!(
+            fused.results[1].relationship,
+            SemanticRelationshipClass::LexicalOnly
         );
         assert!(
             fused
