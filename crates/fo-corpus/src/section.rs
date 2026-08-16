@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     atomic_write, sha256_hex, unix_timestamp, CorpusDocument, CorpusError, CorpusManifest,
-    Result,
+    CorpusProvider, Result,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,23 +51,14 @@ impl SectionCorpusOptions {
             || self.target_characters == 0
             || self.maximum_characters == 0
             || self.maximum_sections_per_document == 0
-        {
-            return Err(CorpusError::Invalid(
-                "section character and count limits must be positive".to_owned(),
-            ));
-        }
-        if self.minimum_characters > self.target_characters
+            || self.minimum_characters > self.target_characters
             || self.target_characters > self.maximum_characters
             || self.overlap_characters >= self.target_characters
+            || self.maximum_sections_per_document > 100_000
         {
             return Err(CorpusError::Invalid(
-                "section limits must satisfy minimum <= target <= maximum and overlap < target"
+                "section limits must satisfy 0 < minimum <= target <= maximum, overlap < target, and a bounded section count"
                     .to_owned(),
-            ));
-        }
-        if self.maximum_sections_per_document > 100_000 {
-            return Err(CorpusError::Invalid(
-                "maximum_sections_per_document must not exceed 100,000".to_owned(),
             ));
         }
         Ok(())
@@ -103,13 +94,13 @@ pub fn section_corpus(
     let parent = CorpusManifest::load(input_root)?;
     if options.output_dir == input_root {
         return Err(CorpusError::Invalid(
-            "section output directory must differ from the input corpus".to_owned(),
+            "section output directory must differ from input corpus".to_owned(),
         ));
     }
     if options.output_dir.exists() {
         if !options.replace_output {
             return Err(CorpusError::Invalid(format!(
-                "section output {} already exists; pass --replace-output to rebuild it",
+                "section output {} already exists; pass --replace-output to rebuild",
                 options.output_dir.display()
             )));
         }
@@ -119,12 +110,12 @@ pub fn section_corpus(
     fs::create_dir_all(options.output_dir.join("documents"))
         .map_err(|error| CorpusError::io(options.output_dir.join("documents"), error))?;
 
-    let effective_strategy = resolve_strategy(options.strategy, parent.provider);
+    let strategy = resolve_strategy(options.strategy, parent.provider);
     let mut manifest = CorpusManifest::new(
         format!(
             "{}-sections-{}-{}",
             parent.corpus_id,
-            strategy_name(effective_strategy),
+            strategy_name(strategy),
             options.target_characters
         ),
         parent.provider,
@@ -135,30 +126,20 @@ pub fn section_corpus(
     );
     manifest.source_snapshot.insert(
         "parent_manifest_sha256".to_owned(),
-        sha256_hex(
-            &serde_json::to_vec(&parent).map_err(CorpusError::Json)?,
-        ),
+        sha256_hex(&serde_json::to_vec(&parent)?),
     );
     manifest.source_snapshot.insert(
         "section_strategy".to_owned(),
-        strategy_name(effective_strategy).to_owned(),
+        strategy_name(strategy).to_owned(),
     );
-    manifest.source_snapshot.insert(
-        "minimum_characters".to_owned(),
-        options.minimum_characters.to_string(),
-    );
-    manifest.source_snapshot.insert(
-        "target_characters".to_owned(),
-        options.target_characters.to_string(),
-    );
-    manifest.source_snapshot.insert(
-        "maximum_characters".to_owned(),
-        options.maximum_characters.to_string(),
-    );
-    manifest.source_snapshot.insert(
-        "overlap_characters".to_owned(),
-        options.overlap_characters.to_string(),
-    );
+    for (key, value) in [
+        ("minimum_characters", options.minimum_characters),
+        ("target_characters", options.target_characters),
+        ("maximum_characters", options.maximum_characters),
+        ("overlap_characters", options.overlap_characters),
+    ] {
+        manifest.source_snapshot.insert(key.to_owned(), value.to_string());
+    }
 
     let mut heading_sections = 0usize;
     let mut window_sections = 0usize;
@@ -183,7 +164,7 @@ pub fn section_corpus(
             }
         };
         total_source_bytes = total_source_bytes.saturating_add(source.len() as u64);
-        let mut spans = split_document(&source, effective_strategy, &options);
+        let mut spans = split_document(&source, strategy, &options);
         spans.retain(|span| {
             source
                 .get(span.start..span.end)
@@ -197,23 +178,28 @@ pub fn section_corpus(
 
         let parent_component = sanitize_component(&parent_document.id, 96);
         for (ordinal, span) in spans.into_iter().enumerate() {
-            let Some(section_text) = source.get(span.start..span.end) else {
+            let Some(raw) = source.get(span.start..span.end) else {
                 continue;
             };
-            let section_text = section_text.trim();
-            if section_text.is_empty() {
+            let leading = raw.find(|character: char| !character.is_whitespace()).unwrap_or(0);
+            let trailing = raw.trim_end().len();
+            if leading >= trailing {
                 continue;
             }
+            let section_text = &raw[leading..trailing];
+            let source_start = span.start + leading;
+            let source_end = span.start + trailing;
             let section_id = format!("{}#section-{:04}", parent_document.id, ordinal + 1);
             let title_component = sanitize_component(&span.title, 72);
             let relative_path = format!(
                 "documents/{parent_component}/{:04}_{title_component}.txt",
                 ordinal + 1
             );
-            let destination = options.output_dir.join(&relative_path);
-            atomic_write(&destination, section_text.as_bytes())?;
-            total_section_bytes =
-                total_section_bytes.saturating_add(section_text.len() as u64);
+            atomic_write(
+                &options.output_dir.join(&relative_path),
+                section_text.as_bytes(),
+            )?;
+            total_section_bytes = total_section_bytes.saturating_add(section_text.len() as u64);
             if span.origin == "heading" {
                 heading_sections += 1;
             } else {
@@ -221,15 +207,12 @@ pub fn section_corpus(
             }
             let mut metadata = parent_document.metadata.clone();
             metadata.insert("parent_id".to_owned(), parent_document.id.clone());
-            metadata.insert(
-                "parent_title".to_owned(),
-                parent_document.title.clone(),
-            );
+            metadata.insert("parent_title".to_owned(), parent_document.title.clone());
             metadata.insert("section_index".to_owned(), ordinal.to_string());
             metadata.insert("section_title".to_owned(), span.title.clone());
             metadata.insert("section_origin".to_owned(), span.origin.to_owned());
-            metadata.insert("source_start_byte".to_owned(), span.start.to_string());
-            metadata.insert("source_end_byte".to_owned(), span.end.to_string());
+            metadata.insert("source_start_byte".to_owned(), source_start.to_string());
+            metadata.insert("source_end_byte".to_owned(), source_end.to_string());
             manifest.upsert_document(CorpusDocument {
                 id: section_id,
                 relative_path,
@@ -246,7 +229,6 @@ pub fn section_corpus(
             });
         }
     }
-
     manifest.save(&options.output_dir)?;
     Ok(SectionCorpusReport {
         parent_documents: parent.documents.len(),
@@ -275,14 +257,18 @@ fn split_document(
     }
     let mut output = Vec::new();
     for heading in headings {
-        if source
+        let characters = source
             .get(heading.start..heading.end)
-            .is_some_and(|text| text.chars().count() <= options.maximum_characters)
-        {
+            .map_or(0, |value| value.chars().count());
+        if characters <= options.maximum_characters {
             output.push(heading);
         } else if let Some(text) = source.get(heading.start..heading.end) {
-            let mut windows = paragraph_windows(text, heading.start, &heading.title, options);
-            output.append(&mut windows);
+            output.extend(paragraph_windows(
+                text,
+                heading.start,
+                &heading.title,
+                options,
+            ));
         }
     }
     output
@@ -296,24 +282,21 @@ fn heading_spans(
     let mut headings = Vec::<(usize, String)>::new();
     let mut offset = 0usize;
     for line in source.split_inclusive('\n') {
-        let content = line.trim_matches(['\r', '\n']).trim();
-        if let Some(title) = detector(content) {
+        if let Some(title) = detector(line.trim_matches(['\r', '\n']).trim()) {
             headings.push((offset, title));
         }
-        offset = offset.saturating_add(line.len());
+        offset += line.len();
     }
-    if offset < source.len() {
-        let tail = &source[offset..];
-        if let Some(title) = detector(tail.trim()) {
-            headings.push((offset, title));
-        }
+    if offset < source.len()
+        && let Some(title) = detector(source[offset..].trim())
+    {
+        headings.push((offset, title));
     }
     headings.sort_unstable_by_key(|(offset, _)| *offset);
-    headings.dedup_by(|left, right| left.0 == right.0);
+    headings.dedup_by_key(|(offset, _)| *offset);
     if headings.is_empty() {
         return Vec::new();
     }
-
     let mut candidates = Vec::new();
     if headings[0].0 >= options.minimum_characters {
         candidates.push(SectionSpan {
@@ -324,41 +307,36 @@ fn heading_spans(
         });
     }
     for (index, (start, title)) in headings.iter().enumerate() {
-        let end = headings
-            .get(index + 1)
-            .map_or(source.len(), |(offset, _)| *offset);
-        if end <= *start {
-            continue;
+        let end = headings.get(index + 1).map_or(source.len(), |next| next.0);
+        if end > *start {
+            candidates.push(SectionSpan {
+                start: *start,
+                end,
+                title: title.clone(),
+                origin: "heading",
+            });
         }
-        candidates.push(SectionSpan {
-            start: *start,
-            end,
-            title: title.clone(),
-            origin: "heading",
-        });
     }
-
-    let mut best_by_title = BTreeMap::<String, SectionSpan>::new();
+    let mut best = BTreeMap::<String, SectionSpan>::new();
     for span in candidates {
         let length = source
             .get(span.start..span.end)
-            .map_or(0, |text| text.chars().count());
+            .map_or(0, |value| value.chars().count());
         if length < options.minimum_characters {
             continue;
         }
-        let key = canonical_title(&span.title);
-        match best_by_title.get(&key) {
-            Some(existing)
-                if source
-                    .get(existing.start..existing.end)
-                    .map_or(0, |text| text.chars().count())
-                    >= length => {}
-            _ => {
-                best_by_title.insert(key, span);
-            }
+        let key = collapse_spaces(&span.title).to_ascii_lowercase();
+        let replace = best.get(&key).is_none_or(|existing| {
+            source
+                .get(existing.start..existing.end)
+                .map_or(0, |value| value.chars().count())
+                < length
+        });
+        if replace {
+            best.insert(key, span);
         }
     }
-    let mut spans = best_by_title.into_values().collect::<Vec<_>>();
+    let mut spans = best.into_values().collect::<Vec<_>>();
     spans.sort_unstable_by_key(|span| span.start);
     spans
 }
@@ -369,16 +347,13 @@ fn paragraph_windows(
     title: &str,
     options: &SectionCorpusOptions,
 ) -> Vec<SectionSpan> {
-    if source.is_empty() {
-        return Vec::new();
-    }
     let mut spans = Vec::new();
     let mut start = 0usize;
     let mut ordinal = 1usize;
     while start < source.len() && spans.len() < options.maximum_sections_per_document {
-        let remaining = &source[start..];
-        if remaining.chars().count() <= options.maximum_characters {
-            if remaining.chars().count() >= options.minimum_characters {
+        let remaining_characters = source[start..].chars().count();
+        if remaining_characters <= options.maximum_characters {
+            if remaining_characters >= options.minimum_characters {
                 spans.push(SectionSpan {
                     start: base_offset + start,
                     end: base_offset + source.len(),
@@ -406,8 +381,11 @@ fn paragraph_windows(
         if end >= source.len() {
             break;
         }
-        let next = retreat_chars(source, end, options.overlap_characters);
-        start = next.max(start.saturating_add(1));
+        start = retreat_chars(source, end, options.overlap_characters)
+            .max(start.saturating_add(1));
+        while start < source.len() && !source.is_char_boundary(start) {
+            start += 1;
+        }
     }
     spans
 }
@@ -418,14 +396,14 @@ fn gutenberg_heading(line: &str) -> Option<String> {
     }
     let normalized = collapse_spaces(line);
     let uppercase = normalized.to_ascii_uppercase();
-    let recognized = ["CHAPTER ", "BOOK ", "PART ", "VOLUME "]
+    (["CHAPTER ", "BOOK ", "PART ", "VOLUME "]
         .iter()
         .any(|prefix| uppercase.starts_with(prefix))
         || matches!(
             uppercase.as_str(),
             "PREFACE" | "INTRODUCTION" | "PROLOGUE" | "EPILOGUE" | "CONCLUSION"
-        );
-    recognized.then_some(normalized)
+        ))
+    .then_some(normalized)
 }
 
 fn sec_heading(line: &str) -> Option<String> {
@@ -439,7 +417,7 @@ fn sec_heading(line: &str) -> Option<String> {
         .split(|character: char| character.is_whitespace() || matches!(character, '.' | ':' | '-'))
         .next()
         .unwrap_or_default();
-    if token.is_empty() || token.len() > 3 {
+    if token.is_empty() || token.len() > 4 {
         return None;
     }
     let mut digits = 0usize;
@@ -453,10 +431,7 @@ fn sec_heading(line: &str) -> Option<String> {
             return None;
         }
     }
-    if digits == 0 || digits > 2 || letters > 1 {
-        return None;
-    }
-    Some(normalized)
+    (digits > 0 && digits <= 2 && letters <= 1).then_some(normalized)
 }
 
 fn choose_paragraph_boundary(source: &str, target: usize, maximum: usize) -> usize {
@@ -465,12 +440,10 @@ fn choose_paragraph_boundary(source: &str, target: usize, maximum: usize) -> usi
     if target >= maximum {
         return maximum;
     }
-    let tail = &source[target..maximum];
-    if let Some(relative) = tail.find("\n\n") {
+    if let Some(relative) = source[target..maximum].find("\n\n") {
         return target + relative + 2;
     }
-    let prefix = &source[..target];
-    prefix.rfind("\n\n").map_or(target, |offset| offset + 2)
+    source[..target].rfind("\n\n").map_or(target, |offset| offset + 2)
 }
 
 fn byte_offset_for_chars(source: &str, start: usize, characters: usize) -> usize {
@@ -491,13 +464,14 @@ fn retreat_chars(source: &str, end: usize, characters: usize) -> usize {
         .map_or(0, |(offset, _)| offset)
 }
 
-fn resolve_strategy(strategy: SectionStrategy, provider: crate::CorpusProvider) -> SectionStrategy {
+fn resolve_strategy(strategy: SectionStrategy, provider: CorpusProvider) -> SectionStrategy {
     if strategy != SectionStrategy::Auto {
         return strategy;
     }
     match provider {
-        crate::CorpusProvider::ProjectGutenberg => SectionStrategy::Gutenberg,
-        crate::CorpusProvider::SecEdgar10K => SectionStrategy::Sec10K,
+        CorpusProvider::ProjectGutenberg => SectionStrategy::Gutenberg,
+        CorpusProvider::SecEdgar10K | CorpusProvider::SecEdgarFilings => SectionStrategy::Sec10K,
+        CorpusProvider::LocalCollection => SectionStrategy::ParagraphWindows,
     }
 }
 
@@ -505,7 +479,7 @@ const fn strategy_name(strategy: SectionStrategy) -> &'static str {
     match strategy {
         SectionStrategy::Auto => "auto",
         SectionStrategy::Gutenberg => "gutenberg",
-        SectionStrategy::Sec10K => "sec_10k",
+        SectionStrategy::Sec10K => "sec_items",
         SectionStrategy::ParagraphWindows => "paragraph_windows",
     }
 }
@@ -514,28 +488,17 @@ fn collapse_spaces(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn canonical_title(value: &str) -> String {
-    collapse_spaces(value).to_ascii_lowercase()
-}
-
 fn sanitize_component(value: &str, maximum: usize) -> String {
     let mut output = String::new();
-    let mut prior_separator = false;
+    let mut separator = false;
     for character in value.chars() {
-        let mapped = if character.is_ascii_alphanumeric() {
-            character.to_ascii_lowercase()
-        } else {
-            '_'
-        };
-        if mapped == '_' {
-            if prior_separator || output.is_empty() {
-                continue;
-            }
-            prior_separator = true;
-        } else {
-            prior_separator = false;
+        if character.is_ascii_alphanumeric() {
+            output.push(character.to_ascii_lowercase());
+            separator = false;
+        } else if !separator && !output.is_empty() {
+            output.push('_');
+            separator = true;
         }
-        output.push(mapped);
         if output.len() >= maximum {
             break;
         }
@@ -570,9 +533,7 @@ fn validate_relative_path(value: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        gutenberg_heading, paragraph_windows, sec_heading, SectionCorpusOptions,
-    };
+    use super::{gutenberg_heading, paragraph_windows, sec_heading, SectionCorpusOptions};
 
     #[test]
     fn recognizes_book_and_filing_headings() {
@@ -583,6 +544,10 @@ mod tests {
         assert_eq!(
             sec_heading("ITEM 1A. RISK FACTORS"),
             Some("ITEM 1A. RISK FACTORS".to_owned())
+        );
+        assert_eq!(
+            sec_heading("ITEM 5.02 DEPARTURE OF DIRECTORS"),
+            Some("ITEM 5.02 DEPARTURE OF DIRECTORS".to_owned())
         );
         assert!(sec_heading("itemized expense table").is_none());
     }
