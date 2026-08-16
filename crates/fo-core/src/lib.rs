@@ -25,6 +25,7 @@ mod planner;
 mod prepared;
 mod provenance;
 mod ranking;
+mod review;
 mod search;
 mod segmented;
 mod semantic;
@@ -102,6 +103,10 @@ pub use ranking::{
     GroupedFeedbackExample, PairwiseRankingOptions, RANKING_FEATURE_COUNT,
     RANKING_SCHEMA_VERSION, RankedResult, RankingComparison, RankingModel, mine_hard_negatives,
     ranking_evidence_vector, ranking_feature_names,
+};
+pub use review::{
+    REVIEW_DECISION_SCHEMA_VERSION, ReviewDecisionKind, ReviewDecisionRecord,
+    validate_review_decisions,
 };
 pub use segmented::{
     SegmentAppendReport, SegmentCompactionReport, SegmentDeleteReport, SegmentDescriptor,
