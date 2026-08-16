@@ -5,6 +5,7 @@ mod batch;
 mod calibration;
 mod chain;
 mod composite;
+mod domain;
 mod error;
 mod fingerprint;
 mod grouped_metrics;
@@ -40,6 +41,10 @@ pub use calibration::{
 };
 pub use chain::{Anchor, AnchorChain, ChainOptions, chain_anchors};
 pub use composite::{CompositeMatchBlock, CompositeSearchOptions, CompositeSearchResult};
+pub use domain::{
+    DomainFeaturePolicy, DomainQueryAnalysis, DomainSearchOptions, DomainSearchReport,
+    DomainSearchStatus, TextDomain,
+};
 pub use error::{FoError, Result};
 pub use fingerprint::{Feature, Fingerprint, qgram_hashes};
 pub use grouped_metrics::{
