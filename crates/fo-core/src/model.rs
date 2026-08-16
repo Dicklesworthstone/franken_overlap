@@ -105,6 +105,14 @@ pub struct SearchOptions {
     pub max_results: usize,
     pub max_candidates: usize,
     pub max_postings_per_feature: usize,
+    /// Suppress a fingerprint when it occurs in more than this fraction of indexed documents.
+    pub maximum_document_frequency_fraction: f32,
+    /// Suppress a fingerprint whose document-level inverse-frequency weight is below this floor.
+    pub minimum_feature_idf: f32,
+    /// Maximum posting/query-position products retained across all query fingerprints.
+    pub maximum_query_posting_pairs: u64,
+    /// Minimum fraction of selected query-feature occurrences that must survive suppression.
+    pub minimum_informative_feature_fraction: f32,
     pub minimum_anchor_hits: u32,
     pub diagonal_bin_width: i64,
     pub candidate_suppression_bins: i64,
@@ -129,6 +137,10 @@ impl Default for SearchOptions {
             max_results: 20,
             max_candidates: 200,
             max_postings_per_feature: 50_000,
+            maximum_document_frequency_fraction: 1.0,
+            minimum_feature_idf: 0.0,
+            maximum_query_posting_pairs: u64::MAX,
+            minimum_informative_feature_fraction: 0.0,
             minimum_anchor_hits: 2,
             diagonal_bin_width: 4,
             candidate_suppression_bins: 4,
@@ -156,6 +168,7 @@ impl SearchOptions {
             ));
         }
         if self.max_postings_per_feature == 0
+            || self.maximum_query_posting_pairs == 0
             || self.minimum_anchor_hits == 0
             || self.maximum_anchors_per_candidate == 0
             || self.predecessor_lookback == 0
@@ -163,7 +176,7 @@ impl SearchOptions {
             || self.direct_fallback_work_limit == 0
         {
             return Err(FoError::InvalidConfig(
-                "posting, anchor, predecessor, fallback-work, and short-query limits must be positive"
+                "posting, pair-budget, anchor, predecessor, fallback-work, and short-query limits must be positive"
                     .to_owned(),
             ));
         }
@@ -179,15 +192,36 @@ impl SearchOptions {
             ));
         }
         for (name, value) in [
+            (
+                "maximum_document_frequency_fraction",
+                self.maximum_document_frequency_fraction,
+            ),
+            (
+                "minimum_informative_feature_fraction",
+                self.minimum_informative_feature_fraction,
+            ),
             ("minimum_query_coverage", self.minimum_query_coverage),
             ("minimum_source_coverage", self.minimum_source_coverage),
             ("minimum_similarity", self.minimum_similarity),
         ] {
-            if !(0.0..=1.0).contains(&value) {
+            if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                 return Err(FoError::InvalidConfig(format!(
-                    "{name} must lie in [0, 1]"
+                    "{name} must be finite and lie in [0, 1]"
                 )));
             }
+        }
+        if self.maximum_document_frequency_fraction <= 0.0 {
+            return Err(FoError::InvalidConfig(
+                "maximum_document_frequency_fraction must be greater than zero".to_owned(),
+            ));
+        }
+        if !self.minimum_feature_idf.is_finite()
+            || self.minimum_feature_idf < 0.0
+            || self.minimum_feature_idf > 100.0
+        {
+            return Err(FoError::InvalidConfig(
+                "minimum_feature_idf must be finite and lie in [0, 100]".to_owned(),
+            ));
         }
         Ok(())
     }
