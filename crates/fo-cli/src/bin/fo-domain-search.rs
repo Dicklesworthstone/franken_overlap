@@ -147,7 +147,7 @@ fn run() -> CliResult<()> {
             ..SearchOptions::default()
         },
     };
-    let mut report = index.search_domain(&specimen, &options)?;
+    let mut report = index.search_domain_adaptive(&specimen, &options)?;
     if command.plan_only {
         report.results.clear();
     }
