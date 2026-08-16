@@ -13,6 +13,7 @@ mod hybrid;
 mod hybrid_profile;
 mod index;
 mod lexical;
+mod lineage;
 pub mod metrics;
 mod model;
 mod multiview;
@@ -59,6 +60,10 @@ pub use lexical::{
     LexicalIndex, LexicalIndexBuilder, LexicalIndexConfig, LexicalIndexStats, LexicalOccur,
     LexicalPosting, LexicalQuery, LexicalScoreExplanation, LexicalSearchOptions,
     LexicalSearchResult, LexicalTermEntry, LEXICAL_INDEX_SCHEMA_VERSION,
+};
+pub use lineage::{
+    CanonicalOrigin, LINEAGE_GRAPH_SCHEMA_VERSION, LineageEdge, LineageEvidence, LineageFamily,
+    LineageGraph, LineageNode, LineageRelation, LineageSpan, LineageSummary, LineageVisit, edge_id,
 };
 pub use metrics::{
     EvaluationOptions, LabeledScore, PrecisionRecallPoint, PrecisionRecallReport,
