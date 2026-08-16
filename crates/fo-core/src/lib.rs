@@ -5,6 +5,7 @@ mod batch;
 mod calibration;
 mod chain;
 mod composite;
+mod contracts;
 mod domain;
 mod domain_adaptive;
 mod error;
@@ -45,6 +46,12 @@ pub use calibration::{
 };
 pub use chain::{Anchor, AnchorChain, ChainOptions, chain_anchors};
 pub use composite::{CompositeMatchBlock, CompositeSearchOptions, CompositeSearchResult};
+pub use contracts::{
+    analyze_contract, ClauseClassification, ClauseKind, ContractAnalysis,
+    ContractAnalysisOptions, ContractClause, ContractObligation, ContractProfile,
+    ContractWarning, DefinedTerm, EconomicTerm, EconomicTermKind, ObligationModality,
+    CONTRACT_ANALYSIS_SCHEMA_VERSION,
+};
 pub use domain::{
     DomainFeaturePolicy, DomainQueryAnalysis, DomainSearchOptions, DomainSearchReport,
     DomainSearchStatus, TextDomain,
