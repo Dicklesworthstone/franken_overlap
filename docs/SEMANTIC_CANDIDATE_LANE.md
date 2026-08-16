@@ -122,6 +122,7 @@ It must not be ingested into a textual lineage graph merely because its final fu
 |---|---|
 | `textual_provenance` | localized overlap exists; no semantic evidence supplied |
 | `textual_and_semantic` | localized overlap and semantic evidence agree |
+| `lexical_only` | hybrid retrieval supplied lexical evidence, but no localized overlap or semantic evidence exists |
 | `lexical_and_semantic` | lexical retrieval and semantic evidence agree, but no localized provenance evidence exists |
 | `semantic_only` | external semantic retrieval only |
 
