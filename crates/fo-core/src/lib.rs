@@ -6,6 +6,7 @@ mod calibration;
 mod chain;
 mod composite;
 mod domain;
+mod domain_adaptive;
 mod error;
 mod fingerprint;
 mod grouped_metrics;
