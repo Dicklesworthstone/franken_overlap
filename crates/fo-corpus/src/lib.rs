@@ -7,6 +7,7 @@ mod gutenberg;
 mod http;
 mod model;
 mod sec;
+mod sec_filings;
 mod section;
 
 pub use collection::{
@@ -28,6 +29,10 @@ pub use model::{
 pub use sec::{
     fetch_sec_10k, Sec10KFetchReport, Sec10KOptions, SecPreset, SEC_ARCHIVES_BASE,
     SEC_SUBMISSIONS_BASE, SEC_TICKERS_URL,
+};
+pub use sec_filings::{
+    classify_form, fetch_sec_filings, SecFilingCategory, SecFilingsFetchReport,
+    SecFilingsOptions, COMMENT_LETTER_FORMS, INVESTOR_CORE_FORMS, REGISTRATION_FORMS,
 };
 pub use section::{
     section_corpus, SectionCorpusOptions, SectionCorpusReport, SectionStrategy,
