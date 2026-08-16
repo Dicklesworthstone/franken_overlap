@@ -5,6 +5,8 @@ mod batch;
 mod calibration;
 mod chain;
 mod composite;
+mod contract_diff;
+mod contract_ordering;
 mod contracts;
 mod domain;
 mod domain_adaptive;
@@ -46,6 +48,15 @@ pub use calibration::{
 };
 pub use chain::{Anchor, AnchorChain, ChainOptions, chain_anchors};
 pub use composite::{CompositeMatchBlock, CompositeSearchOptions, CompositeSearchResult};
+pub use contract_diff::{
+    benchmark_contract_portfolio, compare_contracts, ChangeDirection, ClauseChange,
+    ClauseChangeKind, ClausePrevalence, ContractChangeAlert, ContractComparison,
+    ContractComparisonOptions, ContractPortfolioBenchmark, ContractPortfolioOptions,
+    DefinitionChange, DefinitionChangeKind, EconomicChangeKind, EconomicDistribution,
+    EconomicTermChange, InvestorImpactCategory, ObligationChange, ObligationChangeKind,
+    PortfolioDocumentAnalysis, PortfolioOutlier, CONTRACT_COMPARISON_SCHEMA_VERSION,
+    CONTRACT_PORTFOLIO_SCHEMA_VERSION,
+};
 pub use contracts::{
     analyze_contract, ClauseClassification, ClauseKind, ContractAnalysis,
     ContractAnalysisOptions, ContractClause, ContractObligation, ContractProfile,
