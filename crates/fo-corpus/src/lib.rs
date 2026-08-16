@@ -2,6 +2,7 @@
 
 mod collection;
 mod collection_metadata_serialize;
+mod collection_ordering;
 mod gutenberg;
 mod http;
 mod model;
