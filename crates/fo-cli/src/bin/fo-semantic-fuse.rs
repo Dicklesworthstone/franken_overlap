@@ -79,8 +79,8 @@ fn run() -> CliResult<()> {
         },
     )?;
     let bytes = serde_json::to_vec_pretty(&report)?;
-    if let Some(path) = command.output {
-        atomic_write(&path, &bytes)?;
+    if let Some(path) = command.output.as_ref() {
+        atomic_write(path, &bytes)?;
     }
     if command.json || command.output.is_none() {
         println!("{}", String::from_utf8(bytes)?);
