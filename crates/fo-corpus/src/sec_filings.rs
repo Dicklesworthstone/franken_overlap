@@ -66,7 +66,7 @@ impl Default for SecFilingsOptions {
             ciks: Vec::new(),
             sampled_companies: None,
             seed: 0x73_65_63_2d_66_69_6c_65,
-            forms: INVESTOR_CORE_FORMS.iter().map(|form| (*form).to_owned()).collect(),
+            forms: INVESTOR_CORE_FORMS.iter().map(|value| (*value).to_owned()).collect(),
             filings_per_company: 40,
             from_date: Some("2018-01-01".to_owned()),
             to_date: None,
@@ -94,16 +94,15 @@ impl SecFilingsOptions {
             || self.user_agent.trim().is_empty()
             || !self.user_agent.contains('@')
             || !self.requests_per_second.is_finite()
-            || self.requests_per_second <= 0.0
-            || self.requests_per_second > 10.0
+            || !(0.0..=10.0).contains(&self.requests_per_second)
+            || self.requests_per_second == 0.0
             || self.maximum_attempts == 0
             || self.maximum_json_bytes == 0
             || self.maximum_document_bytes == 0
             || self.minimum_characters == 0
         {
             return Err(CorpusError::Invalid(
-                "SEC filing acquisition options are invalid or omit a contact-bearing user agent"
-                    .to_owned(),
+                "SEC filing options are invalid or omit a contact-bearing user agent".to_owned(),
             ));
         }
         if self
@@ -111,7 +110,7 @@ impl SecFilingsOptions {
             .is_some_and(|count| count == 0 || count > 100_000)
         {
             return Err(CorpusError::Invalid(
-                "SEC sampled company count must lie in 1..=100000".to_owned(),
+                "sampled company count must lie in 1..=100000".to_owned(),
             ));
         }
         if self.forms.iter().any(|form| normalize_form(form).is_empty()) {
@@ -119,7 +118,10 @@ impl SecFilingsOptions {
                 "SEC form filters must not contain empty values".to_owned(),
             ));
         }
-        for date in [self.from_date.as_deref(), self.to_date.as_deref()].into_iter().flatten() {
+        for date in [self.from_date.as_deref(), self.to_date.as_deref()]
+            .into_iter()
+            .flatten()
+        {
             if !valid_iso_date(date) {
                 return Err(CorpusError::Invalid(format!(
                     "SEC date filter {date:?} must use YYYY-MM-DD"
@@ -130,7 +132,7 @@ impl SecFilingsOptions {
             && from > to
         {
             return Err(CorpusError::Invalid(
-                "SEC from_date must not follow to_date".to_owned(),
+                "from_date must not follow to_date".to_owned(),
             ));
         }
         Ok(())
@@ -177,6 +179,7 @@ struct SubmissionFilings {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SubmissionHistoryFile {
     name: String,
     #[serde(default)]
@@ -188,7 +191,7 @@ struct SubmissionHistoryFile {
 }
 
 #[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 struct FilingColumns {
     accession_number: Vec<String>,
     filing_date: Vec<String>,
@@ -233,10 +236,9 @@ pub fn fetch_sec_filings(options: SecFilingsOptions) -> Result<SecFilingsFetchRe
     fs::create_dir_all(options.output_dir.join("documents"))
         .map_err(|error| CorpusError::io(options.output_dir.join("documents"), error))?;
     let forms = normalized_form_set(&options.forms);
-    let minimum_interval = Duration::from_secs_f64(1.0 / options.requests_per_second);
     let mut client = DownloadClient::new(HttpOptions {
         user_agent: options.user_agent.clone(),
-        minimum_interval,
+        minimum_interval: Duration::from_secs_f64(1.0 / options.requests_per_second),
         maximum_attempts: options.maximum_attempts,
         timeout: Duration::from_secs(120),
     })?;
@@ -255,30 +257,29 @@ pub fn fetch_sec_filings(options: SecFilingsOptions) -> Result<SecFilingsFetchRe
         corpus_id,
         CorpusProvider::SecEdgarFilings,
     )?;
-    manifest.source_snapshot.insert(
-        "company_tickers_url".to_owned(),
-        SEC_TICKERS_URL.to_owned(),
-    );
-    manifest.source_snapshot.insert(
-        "company_tickers_sha256".to_owned(),
-        sha256_hex(&ticker_response.bytes),
-    );
-    manifest.source_snapshot.insert(
-        "requested_forms".to_owned(),
-        forms.iter().cloned().collect::<Vec<_>>().join(","),
-    );
-    manifest.source_snapshot.insert(
-        "from_date".to_owned(),
-        options.from_date.clone().unwrap_or_default(),
-    );
-    manifest.source_snapshot.insert(
-        "to_date".to_owned(),
-        options.to_date.clone().unwrap_or_default(),
-    );
-    manifest.source_snapshot.insert(
-        "historical_submission_files".to_owned(),
-        options.include_historical_submission_files.to_string(),
-    );
+    manifest.source_snapshot.extend([
+        ("company_tickers_url".to_owned(), SEC_TICKERS_URL.to_owned()),
+        (
+            "company_tickers_sha256".to_owned(),
+            sha256_hex(&ticker_response.bytes),
+        ),
+        (
+            "requested_forms".to_owned(),
+            forms.iter().cloned().collect::<Vec<_>>().join(","),
+        ),
+        (
+            "from_date".to_owned(),
+            options.from_date.clone().unwrap_or_default(),
+        ),
+        (
+            "to_date".to_owned(),
+            options.to_date.clone().unwrap_or_default(),
+        ),
+        (
+            "historical_submission_files".to_owned(),
+            options.include_historical_submission_files.to_string(),
+        ),
+    ]);
 
     let mut candidate_filings = 0usize;
     let mut downloaded = 0usize;
@@ -290,44 +291,35 @@ pub fn fetch_sec_filings(options: SecFilingsOptions) -> Result<SecFilingsFetchRe
     let mut counts_by_form = BTreeMap::new();
     let mut counts_by_category = BTreeMap::new();
 
-    for company in &companies {
+    for selected in &companies {
         let submission_url = format!(
             "{SEC_SUBMISSIONS_BASE}/CIK{:010}.json",
-            company.cik
+            selected.cik
         );
-        let submission_response = match client.get(&submission_url, options.maximum_json_bytes) {
-            Ok(response) => response,
-            Err(error) => {
-                failed += 1;
-                manifest.record_failure(CorpusFailure {
-                    id: format!("CIK{:010}", company.cik),
-                    source_url: Some(submission_url),
-                    message: error.to_string(),
-                    observed_at_unix: unix_timestamp(),
-                });
-                continue;
-            }
-        };
-        let submission = match serde_json::from_slice::<SecSubmission>(&submission_response.bytes) {
+        let submission = match client
+            .get(&submission_url, options.maximum_json_bytes)
+            .and_then(|response| {
+                serde_json::from_slice::<SecSubmission>(&response.bytes).map_err(CorpusError::Json)
+            }) {
             Ok(submission) => submission,
             Err(error) => {
                 failed += 1;
-                manifest.record_failure(CorpusFailure {
-                    id: format!("CIK{:010}", company.cik),
-                    source_url: Some(submission_url),
-                    message: error.to_string(),
-                    observed_at_unix: unix_timestamp(),
-                });
+                record_failure(
+                    &mut manifest,
+                    format!("CIK{:010}", selected.cik),
+                    Some(submission_url),
+                    error,
+                );
                 continue;
             }
         };
         let issuer = if submission.name.trim().is_empty() {
-            company.issuer.clone()
+            selected.issuer.clone()
         } else {
             submission.name.clone()
         };
         let tickers = if submission.tickers.is_empty() {
-            company.tickers.clone()
+            selected.tickers.clone()
         } else {
             submission.tickers.clone()
         };
@@ -346,44 +338,38 @@ pub fn fetch_sec_filings(options: SecFilingsOptions) -> Result<SecFilingsFetchRe
                 .iter()
                 .take(options.maximum_historical_files_per_company)
             {
-                if history.name.trim().is_empty() || !history.name.ends_with(".json") {
-                    continue;
-                }
-                if !history_overlaps_date_range(history, &options) {
+                if history.name.trim().is_empty()
+                    || !history.name.ends_with(".json")
+                    || !history_overlaps_date_range(history, &options)
+                {
                     continue;
                 }
                 let url = format!("{SEC_SUBMISSIONS_BASE}/{}", history.name);
-                match client.get(&url, options.maximum_json_bytes) {
-                    Ok(response) => match serde_json::from_slice::<FilingColumns>(&response.bytes) {
-                        Ok(columns) => {
-                            historical_submission_files_read += 1;
-                            candidates.extend(candidates_from_columns(
-                                submission.cik,
-                                &issuer,
-                                &tickers,
-                                &columns,
-                                &forms,
-                                &options,
-                            ));
-                        }
-                        Err(error) => {
-                            failed += 1;
-                            manifest.record_failure(CorpusFailure {
-                                id: history.name.clone(),
-                                source_url: Some(url),
-                                message: error.to_string(),
-                                observed_at_unix: unix_timestamp(),
-                            });
-                        }
-                    },
+                match client
+                    .get(&url, options.maximum_json_bytes)
+                    .and_then(|response| {
+                        serde_json::from_slice::<FilingColumns>(&response.bytes)
+                            .map_err(CorpusError::Json)
+                    }) {
+                    Ok(columns) => {
+                        historical_submission_files_read += 1;
+                        candidates.extend(candidates_from_columns(
+                            submission.cik,
+                            &issuer,
+                            &tickers,
+                            &columns,
+                            &forms,
+                            &options,
+                        ));
+                    }
                     Err(error) => {
                         failed += 1;
-                        manifest.record_failure(CorpusFailure {
-                            id: history.name.clone(),
-                            source_url: Some(url),
-                            message: error.to_string(),
-                            observed_at_unix: unix_timestamp(),
-                        });
+                        record_failure(
+                            &mut manifest,
+                            history.name.clone(),
+                            Some(url),
+                            error,
+                        );
                     }
                 }
             }
@@ -425,133 +411,132 @@ pub fn fetch_sec_filings(options: SecFilingsOptions) -> Result<SecFilingsFetchRe
                 accession_compact
             );
             let destination = options.output_dir.join(&relative_path);
-            if destination.is_file() && !options.overwrite {
-                if let Some(existing) = manifest.document(&id)
-                    && existing.relative_path == relative_path
-                    && fs::metadata(&destination)
-                        .map(|metadata| metadata.len() == existing.bytes)
-                        .unwrap_or(false)
-                {
-                    reused += 1;
-                    *counts_by_form.entry(candidate.form.clone()).or_insert(0usize) += 1;
-                    *counts_by_category
-                        .entry(category_name(classify_form(&candidate.form)).to_owned())
-                        .or_insert(0usize) += 1;
-                    continue;
-                }
+            let category = classify_form(&candidate.form);
+            if destination.is_file()
+                && !options.overwrite
+                && manifest.document(&id).is_some_and(|existing| {
+                    existing.relative_path == relative_path
+                        && fs::metadata(&destination)
+                            .map(|metadata| metadata.len() == existing.bytes)
+                            .unwrap_or(false)
+                })
+            {
+                reused += 1;
+                increment_counts(
+                    &mut counts_by_form,
+                    &mut counts_by_category,
+                    &candidate.form,
+                    category,
+                );
+                continue;
             }
             let url = format!(
                 "{SEC_ARCHIVES_BASE}/edgar/data/{}/{}/{}",
                 candidate.cik, accession_compact, primary_document
             );
-            match client.get(&url, options.maximum_document_bytes) {
-                Ok(response) => {
-                    let text = match filing_to_text(&response.bytes) {
-                        Ok(Some(text)) => text,
-                        Ok(None) => {
-                            rejected_binary += 1;
-                            manifest.record_failure(CorpusFailure {
-                                id,
-                                source_url: Some(response.final_url),
-                                message: "SEC primary document is binary or unsupported".to_owned(),
-                                observed_at_unix: unix_timestamp(),
-                            });
-                            continue;
-                        }
-                        Err(error) => {
-                            failed += 1;
-                            manifest.record_failure(CorpusFailure {
-                                id,
-                                source_url: Some(response.final_url),
-                                message: error.to_string(),
-                                observed_at_unix: unix_timestamp(),
-                            });
-                            continue;
-                        }
-                    };
-                    if text.chars().count() < options.minimum_characters {
-                        rejected_too_short += 1;
-                        manifest.record_failure(CorpusFailure {
-                            id,
-                            source_url: Some(response.final_url),
-                            message: format!(
-                                "extracted SEC filing has fewer than {} characters",
-                                options.minimum_characters
-                            ),
-                            observed_at_unix: unix_timestamp(),
-                        });
-                        continue;
-                    }
-                    let bytes = text.into_bytes();
-                    atomic_write(&destination, &bytes)?;
-                    let category = classify_form(&candidate.form);
-                    let mut metadata = BTreeMap::new();
-                    metadata.insert("cik".to_owned(), candidate.cik.to_string());
-                    metadata.insert(
-                        "accession_number".to_owned(),
-                        candidate.accession_number.clone(),
-                    );
-                    metadata.insert("filing_date".to_owned(), candidate.filing_date.clone());
-                    metadata.insert("report_date".to_owned(), candidate.report_date.clone());
-                    metadata.insert(
-                        "acceptance_date_time".to_owned(),
-                        candidate.acceptance_date_time.clone(),
-                    );
-                    metadata.insert("form".to_owned(), candidate.form.clone());
-                    metadata.insert("filing_category".to_owned(), category_name(category).to_owned());
-                    metadata.insert("primary_document".to_owned(), primary_document.to_owned());
-                    metadata.insert("description".to_owned(), candidate.description.clone());
-                    metadata.insert("items".to_owned(), candidate.items.clone());
-                    metadata.insert("tickers".to_owned(), candidate.tickers.join(","));
-                    metadata.insert("is_xbrl".to_owned(), candidate.is_xbrl.to_string());
-                    metadata.insert(
-                        "is_inline_xbrl".to_owned(),
-                        candidate.is_inline_xbrl.to_string(),
-                    );
-                    if let Some(size) = candidate.declared_size {
-                        metadata.insert("declared_size".to_owned(), size.to_string());
-                    }
-                    if let Some(etag) = response.etag {
-                        metadata.insert("etag".to_owned(), etag);
-                    }
-                    if let Some(last_modified) = response.last_modified {
-                        metadata.insert("last_modified".to_owned(), last_modified);
-                    }
-                    manifest.upsert_document(CorpusDocument {
-                        id: id.clone(),
-                        relative_path,
-                        source_url: response.final_url,
-                        title: format!(
-                            "{} {} filed {}",
-                            candidate.issuer, candidate.form, candidate.filing_date
-                        ),
-                        author_or_issuer: candidate.issuer,
-                        language: Some("en".to_owned()),
-                        published_or_filed: Some(candidate.filing_date),
-                        sha256: sha256_hex(&bytes),
-                        bytes: bytes.len() as u64,
-                        characters: String::from_utf8_lossy(&bytes).chars().count(),
-                        downloaded_at_unix: unix_timestamp(),
-                        metadata,
+            let response = match client.get(&url, options.maximum_document_bytes) {
+                Ok(response) => response,
+                Err(error) => {
+                    failed += 1;
+                    record_failure(&mut manifest, id, Some(url), error);
+                    continue;
+                }
+            };
+            let text = match filing_to_text(&response.bytes) {
+                Ok(Some(text)) => text,
+                Ok(None) => {
+                    rejected_binary += 1;
+                    manifest.record_failure(CorpusFailure {
+                        id,
+                        source_url: Some(response.final_url),
+                        message: "SEC primary document is binary or unsupported".to_owned(),
+                        observed_at_unix: unix_timestamp(),
                     });
-                    downloaded += 1;
-                    *counts_by_form.entry(candidate.form).or_insert(0usize) += 1;
-                    *counts_by_category
-                        .entry(category_name(category).to_owned())
-                        .or_insert(0usize) += 1;
-                    if downloaded % 10 == 0 {
-                        manifest.save(&options.output_dir)?;
-                    }
+                    continue;
                 }
                 Err(error) => {
                     failed += 1;
-                    manifest.record_failure(CorpusFailure {
-                        id,
-                        source_url: Some(url),
-                        message: error.to_string(),
-                        observed_at_unix: unix_timestamp(),
-                    });
+                    record_failure(&mut manifest, id, Some(response.final_url), error);
+                    continue;
                 }
+            };
+            if text.chars().count() < options.minimum_characters {
+                rejected_too_short += 1;
+                manifest.record_failure(CorpusFailure {
+                    id,
+                    source_url: Some(response.final_url),
+                    message: format!(
+                        "extracted filing has fewer than {} characters",
+                        options.minimum_characters
+                    ),
+                    observed_at_unix: unix_timestamp(),
+                });
+                continue;
+            }
+            let bytes = text.into_bytes();
+            atomic_write(&destination, &bytes)?;
+            let mut metadata = BTreeMap::from([
+                ("cik".to_owned(), candidate.cik.to_string()),
+                (
+                    "accession_number".to_owned(),
+                    candidate.accession_number.clone(),
+                ),
+                ("filing_date".to_owned(), candidate.filing_date.clone()),
+                ("report_date".to_owned(), candidate.report_date.clone()),
+                (
+                    "acceptance_date_time".to_owned(),
+                    candidate.acceptance_date_time.clone(),
+                ),
+                ("form".to_owned(), candidate.form.clone()),
+                (
+                    "filing_category".to_owned(),
+                    category_name(category).to_owned(),
+                ),
+                ("primary_document".to_owned(), primary_document.to_owned()),
+                ("description".to_owned(), candidate.description.clone()),
+                ("items".to_owned(), candidate.items.clone()),
+                ("tickers".to_owned(), candidate.tickers.join(",")),
+                ("is_xbrl".to_owned(), candidate.is_xbrl.to_string()),
+                (
+                    "is_inline_xbrl".to_owned(),
+                    candidate.is_inline_xbrl.to_string(),
+                ),
+            ]);
+            if let Some(size) = candidate.declared_size {
+                metadata.insert("declared_size".to_owned(), size.to_string());
+            }
+            if let Some(etag) = response.etag {
+                metadata.insert("etag".to_owned(), etag);
+            }
+            if let Some(last_modified) = response.last_modified {
+                metadata.insert("last_modified".to_owned(), last_modified);
+            }
+            manifest.upsert_document(CorpusDocument {
+                id,
+                relative_path,
+                source_url: response.final_url,
+                title: format!(
+                    "{} {} filed {}",
+                    candidate.issuer, candidate.form, candidate.filing_date
+                ),
+                author_or_issuer: candidate.issuer,
+                language: Some("en".to_owned()),
+                published_or_filed: Some(candidate.filing_date),
+                sha256: sha256_hex(&bytes),
+                bytes: bytes.len() as u64,
+                characters: String::from_utf8_lossy(&bytes).chars().count(),
+                downloaded_at_unix: unix_timestamp(),
+                metadata,
+            });
+            downloaded += 1;
+            increment_counts(
+                &mut counts_by_form,
+                &mut counts_by_category,
+                &candidate.form,
+                category,
+            );
+            if downloaded % 10 == 0 {
+                manifest.save(&options.output_dir)?;
             }
         }
     }
@@ -570,6 +555,32 @@ pub fn fetch_sec_filings(options: SecFilingsOptions) -> Result<SecFilingsFetchRe
         counts_by_form,
         counts_by_category,
     })
+}
+
+fn record_failure(
+    manifest: &mut CorpusManifest,
+    id: String,
+    source_url: Option<String>,
+    error: CorpusError,
+) {
+    manifest.record_failure(CorpusFailure {
+        id,
+        source_url,
+        message: error.to_string(),
+        observed_at_unix: unix_timestamp(),
+    });
+}
+
+fn increment_counts(
+    by_form: &mut BTreeMap<String, usize>,
+    by_category: &mut BTreeMap<String, usize>,
+    form: &str,
+    category: SecFilingCategory,
+) {
+    *by_form.entry(form.to_owned()).or_insert(0) += 1;
+    *by_category
+        .entry(category_name(category).to_owned())
+        .or_insert(0) += 1;
 }
 
 fn select_companies(
@@ -646,19 +657,17 @@ fn candidates_from_columns(
     let mut output = Vec::new();
     for index in 0..count {
         let form = normalize_form(&columns.form[index]);
-        if !forms.contains(&form) {
-            continue;
-        }
         let filing_date = columns.filing_date[index].clone();
-        if !valid_iso_date(&filing_date)
+        if !forms.contains(&form)
+            || !valid_iso_date(&filing_date)
             || options
                 .from_date
                 .as_ref()
-                .is_some_and(|from| filing_date < *from)
+                .is_some_and(|from| filing_date.as_str() < from.as_str())
             || options
                 .to_date
                 .as_ref()
-                .is_some_and(|to| filing_date > *to)
+                .is_some_and(|to| filing_date.as_str() > to.as_str())
         {
             continue;
         }
@@ -702,18 +711,14 @@ fn history_overlaps_date_range(
     if history.filing_count == 0 && history.filing_from.is_empty() && history.filing_to.is_empty() {
         return true;
     }
-    if options
-        .from_date
-        .as_ref()
-        .is_some_and(|from| !history.filing_to.is_empty() && history.filing_to < *from)
-    {
+    if options.from_date.as_ref().is_some_and(|from| {
+        !history.filing_to.is_empty() && history.filing_to.as_str() < from.as_str()
+    }) {
         return false;
     }
-    if options
-        .to_date
-        .as_ref()
-        .is_some_and(|to| !history.filing_from.is_empty() && history.filing_from > *to)
-    {
+    if options.to_date.as_ref().is_some_and(|to| {
+        !history.filing_from.is_empty() && history.filing_from.as_str() > to.as_str()
+    }) {
         return false;
     }
     true
@@ -816,8 +821,8 @@ fn clean_filing_text(input: &str) -> String {
 }
 
 fn short_form_fingerprint(forms: &BTreeSet<String>) -> String {
-    let digest = sha256_hex(forms.iter().cloned().collect::<Vec<_>>().join("\n").as_bytes());
-    digest[..12].to_owned()
+    sha256_hex(forms.iter().cloned().collect::<Vec<_>>().join("\n").as_bytes())[..12]
+        .to_owned()
 }
 
 fn sanitize_component(value: &str) -> String {
@@ -876,6 +881,21 @@ mod tests {
         assert_eq!(classify_form("8-k/a"), SecFilingCategory::CurrentReport);
         assert_eq!(classify_form("DEF 14A"), SecFilingCategory::Proxy);
         assert_eq!(classify_form("UPLOAD"), SecFilingCategory::CommentLetter);
+    }
+
+    #[test]
+    fn parses_camel_case_submission_columns() {
+        let value = serde_json::json!({
+            "accessionNumber":["0001-24-000001"],
+            "filingDate":["2024-02-01"],
+            "form":["10-K"],
+            "primaryDocument":["annual.htm"],
+            "isXBRL":[1],
+            "isInlineXBRL":[1]
+        });
+        let columns: FilingColumns = serde_json::from_value(value).expect("columns");
+        assert_eq!(columns.accession_number[0], "0001-24-000001");
+        assert!(columns.is_inline_xbrl[0] != 0);
     }
 
     #[test]
