@@ -1,11 +1,18 @@
 #![forbid(unsafe_code)]
 
+mod collection;
 mod gutenberg;
 mod http;
 mod model;
 mod sec;
 mod section;
 
+pub use collection::{
+    import_collection, verify_collection, CollectionDocumentRecord, CollectionImportOptions,
+    CollectionImportReport, CollectionManifest, CollectionMetadataRow, CollectionProfile,
+    CollectionRelation, CollectionRelationKind, CollectionVerificationReport,
+    COLLECTION_MANIFEST_FILENAME, COLLECTION_MANIFEST_SCHEMA_VERSION,
+};
 pub use gutenberg::{
     fetch_gutenberg, GutenbergFetchReport, GutenbergOptions, GutenbergPreset,
     DEFAULT_GUTENBERG_MIRROR, GUTENBERG_CATALOG_URL,
