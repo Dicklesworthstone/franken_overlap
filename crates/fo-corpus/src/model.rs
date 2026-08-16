@@ -174,6 +174,7 @@ impl CorpusManifest {
 pub enum CorpusProvider {
     ProjectGutenberg,
     SecEdgar10K,
+    SecEdgarFilings,
     LocalCollection,
 }
 
