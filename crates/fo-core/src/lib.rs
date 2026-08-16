@@ -22,6 +22,7 @@ mod multiview;
 mod normalize;
 mod pan_metrics;
 mod planner;
+mod prepared;
 mod provenance;
 mod ranking;
 mod search;
@@ -89,6 +90,10 @@ pub use pan_metrics::{PanAnnotation, PanEvaluationReport, pan_evaluate, plagdet_
 pub use planner::{
     AdaptiveMatch, AdaptiveRoute, AdaptiveSearchReport, QueryAdvisory, QueryPlan,
     QueryPlannerOptions,
+};
+pub use prepared::{
+    DocumentCandidate, DocumentFirstOptions, DocumentFirstSearchReport, DocumentFirstStatus,
+    PREPARED_QUERY_SCHEMA_VERSION, PreparedOverlapQuery, PreparedQueryFeature,
 };
 pub use provenance::{
     OriginalByteRange, ProvenanceNormalizedText, normalize_with_provenance,
