@@ -1,40 +1,74 @@
 # FrankenOverlap
 
-**Sparse-spectral textual overlap, approximate alignment, and hybrid lexical search in safe Rust.**
+**Explainable textual provenance, edited-passage retrieval, approximate alignment, and hybrid lexical search in safe Rust.**
 
-FrankenOverlap started from one observation: approximate passage search does not have to begin with a corpus-wide edit-distance scan. Equality-preserving textual features can vote for likely alignments through sparse positional postings, while dense categorical cross-correlation remains available when the corpus is unindexed or every offset matters.
+FrankenOverlap finds where a specimen passage came from even after formatting changes, substitutions, insertions, deletions, OCR corruption, fragmentation, or reordering. It combines rare-feature positional retrieval, anchor chaining, and exact verification rather than scanning every corpus window with edit distance.
 
-The project has since grown into a broader search workbench that uses the same principles throughout:
-
-- categorical identifiers are never treated as numeric coordinates;
-- rare evidence is processed before common evidence;
-- approximate stages generate candidates rather than final truth;
-- positions, phrases, diagonals, and chains preserve structure;
-- expensive exact alignment is spent only on surviving spans;
-- ranking changes are measured on query groups and real corpora;
-- accepted improvements become durable profiles and experiment records.
-
-FrankenOverlap now supports:
-
-- edited and partially copied passage discovery;
-- fragmented and reordered source attribution;
-- near-duplicate detection;
-- fielded BM25 keyword search;
-- exact phrase and positional proximity search;
-- lexical/overlap hybrid retrieval;
-- multi-q-gram consensus;
-- batch and segmented-corpus operation;
-- calibrated and pairwise/listwise learned ranking;
-- active learning and hard-negative mining;
-- native Project Gutenberg and SEC Form 10-K acquisition;
-- chapter and 10-K-item section derivation;
-- real-corpus AUPRC and latency benchmarking;
-- held-out fusion tuning;
-- append-only experiment history and evidence-gated profile promotion.
+The same infrastructure also supports fielded BM25, phrase and proximity search, explainable lexical/overlap fusion, incremental indexes, real-corpus benchmarking, learned reranking, and evidence-gated deployment.
 
 The default core is safe Rust and has no C, C++, Python, BLAS, or GPU runtime dependency.
 
-## The central model
+## The upshot
+
+FrankenOverlap is most valuable when the question is not merely:
+
+> Which documents discuss this topic?
+
+but:
+
+> Where did this passage come from, how much survived, what changed, was it fragmented or reordered, and what exact source evidence supports the answer?
+
+Its strongest potential applications are:
+
+- SEC filing, contract, and policy-language lineage;
+- plagiarism and unattributed-reuse analysis;
+- edition and version comparison;
+- OCR recovery and historical-text alignment;
+- code and license provenance after token-aware adaptation;
+- dataset deduplication and training-data provenance;
+- internal document-reuse and policy-lineage tracking.
+
+The general lexical layer is useful, but the differentiated product is **localized, edit-tolerant, auditable textual provenance**. FrankenOverlap should not pretend to replace Lucene, Elasticsearch, or a vector database for every search workload.
+
+## Empirical status: promising and testable, not yet benchmark-proven
+
+As of August 15, 2026, the repository contains a substantial implementation and the full machinery needed to evaluate it fairly:
+
+- Project Gutenberg and SEC Form 10-K acquisition and verification;
+- chapter and filing-item sectioning;
+- controlled and natural real-corpus scenarios;
+- exact substring, q-gram Jaccard, SimHash, BM25, and exhaustive Levenshtein controls;
+- nested corpus-size quality and latency benchmarks;
+- natural-label adjudication;
+- paired bootstrap claim gates;
+- immutable Markdown and HTML evidence bundles;
+- a one-command evidence-suite orchestrator.
+
+What `main` does **not** yet contain is a completed real-corpus evidence run with pinned corpus receipts and numerical results. Therefore this README does not claim that FrankenOverlap has already beaten BM25, exact search, Jaccard, SimHash, or exhaustive edit-distance retrieval by a particular AUPRC or wall-time margin.
+
+The correct conclusion today is:
+
+> FrankenOverlap is a serious specialized search system with a plausible advantage on long edited, fragmented, and reordered passage retrieval. That comparative advantage remains a hypothesis until a checked-in evidence suite demonstrates it.
+
+See [`docs/EMPIRICAL_STATUS.md`](docs/EMPIRICAL_STATUS.md).
+
+## Where each method should win
+
+| Workload | Natural first choice | FrankenOverlap's role |
+|---|---|---|
+| Exact unchanged quotation | exact substring search | normalization and edited fallback |
+| Short keyword or fielded query | BM25 / positional lexical search | optional hybrid evidence |
+| Pure semantic paraphrase | embeddings or another semantic retriever | textual verification after semantic candidates |
+| One short pair of known texts | Myers or direct edit distance | indexing is unnecessary |
+| Long edited specimen against a static corpus | sparse overlap index | primary differentiated use case |
+| Fragmented or reordered reuse | composite overlap search | primary differentiated use case |
+| Several edit/noise regimes | multi-view q-gram consensus | high-recall and agreement evidence |
+| Repeated queries over a growing corpus | indexed and segmented retrieval | strong intended use case |
+| One-off unindexed scan | direct equality or dense correlation | optional dense route |
+
+A trustworthy benchmark should allow exact search to win exact-query latency and BM25 to win short keyword queries. FrankenOverlap earns its complexity only if it improves edited-passage retrieval, source localization, or provenance at acceptable cost.
+
+## How it works
 
 For specimen tokens `P[0..m]` and corpus tokens `T[0..n]`, exact positional overlap at offset `s` is:
 
@@ -49,7 +83,7 @@ static indexed corpus
   → normalized q-grams
   → winnowed rare fingerprints
   → positional postings
-  → diagonal votes
+  → shifted diagonal votes
   → anchor chains
   → bounded exact verification
 
@@ -68,22 +102,9 @@ ordinary search query
   → edited-passage overlap evidence
 ```
 
-Sparse postings and dense FFTs are two execution strategies for the same equality statistic. The runtime chooses the route based on corpus state, query length, entropy, feature retention, and predicted posting work.
-
-## Why not correlate token IDs directly?
-
-Unicode code points, BPE IDs, and vocabulary IDs are categorical labels. Renumbering a vocabulary must not change textual similarity. Token `50,001` is not intrinsically closer to `50,002` than to `7`.
-
-FrankenOverlap therefore uses:
-
-- equality-preserving rolling fingerprints for sparse retrieval;
-- one-hot-equivalent positional evidence;
-- signed or phase-hashed categorical embeddings for approximate dense correlation;
-- exact normalized-token verification before a lexical overlap is accepted.
+Unicode code points, BPE IDs, and vocabulary IDs are categorical labels. Their numeric magnitudes have no similarity meaning, so FrankenOverlap never correlates raw token IDs as coordinates.
 
 ## Quick start
-
-Build the workspace with the moving nightly selected by `rust-toolchain.toml`:
 
 ```bash
 git clone https://github.com/Dicklesworthstone/franken_overlap
@@ -91,7 +112,7 @@ cd franken_overlap
 cargo build --release --workspace
 ```
 
-### Build a general hybrid search index
+Build a hybrid index:
 
 ```bash
 cargo run --release -p fo-cli --bin fo-search -- build \
@@ -99,7 +120,7 @@ cargo run --release -p fo-cli --bin fo-search -- build \
   --output ./documents.fohybrid
 ```
 
-Search it:
+Short lexical query:
 
 ```bash
 cargo run --release -p fo-cli --bin fo-search -- query \
@@ -107,7 +128,7 @@ cargo run --release -p fo-cli --bin fo-search -- query \
   'material weakness liquidity covenant'
 ```
 
-Fielded and phrase query:
+Fielded phrase query:
 
 ```bash
 cargo run --release -p fo-cli --bin fo-search -- query \
@@ -115,7 +136,7 @@ cargo run --release -p fo-cli --bin fo-search -- query \
   '+title:observatory "copper shutters" detector -tag:cooking'
 ```
 
-Edited passage query:
+Edited specimen:
 
 ```bash
 cargo run --release -p fo-cli --bin fo-search -- query \
@@ -124,7 +145,7 @@ cargo run --release -p fo-cli --bin fo-search -- query \
   --mode overlap
 ```
 
-Machine-readable output preserves the complete lexical and overlap explanations:
+Machine-readable output retains lexical and overlap explanations:
 
 ```bash
 cargo run --release -p fo-cli --bin fo-search -- query \
@@ -135,248 +156,57 @@ cargo run --release -p fo-cli --bin fo-search -- query \
 
 See [`docs/HYBRID_SEARCH.md`](docs/HYBRID_SEARCH.md).
 
-## Download real corpora natively
+## Search capabilities
 
-The `fo-corpus` crate downloads and verifies text without shell scripts or Python glue.
-
-Available providers:
-
-```text
-Project Gutenberg
-SEC EDGAR Form 10-K
-```
-
-The corpus manifest records every source URL, SHA-256 digest, byte and character count, publication/filing metadata, provider snapshot, and acquisition failure. Downloads are resumable and fail closed on integrity mismatches.
-
-List the exact acquisition commands and presets:
-
-```bash
-cargo run --release -p fo-corpus -- --help
-cargo run --release -p fo-corpus -- gutenberg --help
-cargo run --release -p fo-corpus -- sec10k --help
-```
-
-Project Gutenberg automation follows the official machine-readable catalog and mirror model. Larger runs require an explicit mirror rather than scraping the human-facing site.
-
-SEC acquisition requires a declared identity containing a contact email and enforces a configurable rate below the SEC fair-access ceiling:
-
-```bash
-export SEC_USER_AGENT='Example Research research@example.com'
-```
-
-See [`docs/CORPUS_ACQUISITION.md`](docs/CORPUS_ACQUISITION.md).
-
-## Turn books and 10-Ks into meaningful retrieval units
-
-Whole books and annual filings dilute lexical evidence and make correct passages appear insignificant relative to the complete source document. Derive chapter- or item-level corpora:
-
-```bash
-cargo run --release -p fo-corpus --bin fo-section -- \
-  corpora/gutenberg-standard \
-  --output corpora/gutenberg-chapters \
-  --strategy gutenberg
-```
-
-```bash
-cargo run --release -p fo-corpus --bin fo-section -- \
-  corpora/sec-standard \
-  --output corpora/sec-items \
-  --strategy sec10k
-```
-
-The derived manifest retains parent identity, section title/index, extraction strategy, and exact parent byte range. Oversized sections are subdivided at paragraph boundaries with deterministic overlap.
-
-See [`docs/CORPUS_SECTIONING.md`](docs/CORPUS_SECTIONING.md).
-
-## Benchmark on actual books and filings
-
-`fo-real-bench` can consume an existing corpus or invoke the native downloader itself. It extracts real passages and generates deterministic workloads covering:
-
-- exact reuse;
-- case, punctuation, and formatting drift;
-- word substitutions;
-- burst insertions and deletions;
-- OCR-like corruption;
-- fragmented reuse surrounded by unrelated context;
-- reordered blocks;
-- short keyword queries.
-
-Example:
-
-```bash
-cargo run --release -p fo-bench --bin fo-real-bench -- \
-  --provider existing \
-  --corpus-root corpora/gutenberg-chapters \
-  --maximum-documents 250 \
-  --source-documents 32 \
-  --output benchmark-artifacts/gutenberg.json \
-  --scores-output benchmark-artifacts/gutenberg-scores.jsonl
-```
-
-Compared methods:
-
-```text
-normalized exact substring
-character q-gram Jaccard
-character q-gram SimHash
-fielded BM25 + phrase + proximity
-FrankenOverlap sparse alignment
-unified hybrid retrieval
-```
-
-Reported measurements include micro and macro query AUPRC, tie-aware Recall@1/5/10 and MRR, false positives per query, p50/p95/p99 latency, throughput, index-build time, serialization time, and persisted bytes.
-
-See [`docs/REAL_CORPUS_BENCHMARK.md`](docs/REAL_CORPUS_BENCHMARK.md).
-
-## Tune hybrid fusion on held-out queries
-
-The benchmark score stream can determine lexical, overlap, and reciprocal-rank weights instead of relying on fixed guesses:
-
-```bash
-cargo run --release -p fo-bench --bin fo-hybrid-tune -- fit \
-  benchmark-artifacts/gutenberg-scores.jsonl \
-  --output profiles/gutenberg-hybrid.json \
-  --report benchmark-artifacts/gutenberg-tuning.json \
-  --require-test-micro-delta 0.005 \
-  --require-test-macro-delta 0.005
-```
-
-Complete query groups remain intact across deterministic 60/20/20 train, validation, and untouched test splits. Training produces a bounded shortlist; validation selects one configuration; adoption gates are evaluated on the untouched test split.
-
-Use a promoted profile:
-
-```bash
-cargo run --release -p fo-cli --bin fo-search-profiled -- \
-  indexes/gutenberg.fohybrid \
-  profiles/gutenberg-hybrid.json \
-  'the shutters opened before dawn'
-```
-
-See [`docs/HYBRID_TUNING.md`](docs/HYBRID_TUNING.md).
-
-## Keep benchmark evidence forever
-
-Record a benchmark result and its candidate profile:
-
-```bash
-cargo run --release -p fo-bench --bin fo-experiment -- record \
-  benchmark-artifacts/experiments.jsonl \
-  benchmark-artifacts/gutenberg.json \
-  --method franken_hybrid \
-  --profile profiles/gutenberg-hybrid.json \
-  --commit "$(git rev-parse HEAD)"
-```
-
-Promote only when explicit constraints are met:
-
-```bash
-cargo run --release -p fo-bench --bin fo-experiment -- promote \
-  benchmark-artifacts/experiments.jsonl \
-  profiles/registry.json \
-  --corpus-id gutenberg-standard-sections \
-  --minimum-macro-delta 0.005 \
-  --maximum-micro-regression 0.002 \
-  --maximum-recall-at-1-regression 0.0 \
-  --maximum-p95-regression-fraction 0.10
-```
-
-The experiment ledger is append-only. The deployment registry is corpus-specific, atomic, and contains the complete promoted profile plus the exact evidence record that justified it.
-
-See [`docs/EXPERIMENT_LEDGER.md`](docs/EXPERIMENT_LEDGER.md).
-
-## Core search capabilities
-
-### Edited passage search
+### Edited, fragmented, and reordered passage search
 
 ```bash
 cargo run --release -p fo-cli -- \
   index ./documents --output corpus.foidx
 
 cargo run --release -p fo-cli -- \
-  query corpus.foidx specimen.txt \
-  --intent source-attribution
-```
+  query corpus.foidx specimen.txt --intent source-attribution
 
-The index uses 128-bit rolling q-gram fingerprints, rightmost-minimum winnowing, IDF-weighted diagonal voting, monotone anchor chaining, and exact verification.
-
-### Fragmented and reordered reuse
-
-```bash
 cargo run --release -p fo-cli --bin fo-composite -- \
-  corpus.foidx specimen.txt \
-  --maximum-blocks 8
+  corpus.foidx specimen.txt --maximum-blocks 8
 ```
 
-Several non-overlapping passages from one source can contribute to one source-level result even when the passages were moved or separated by unrelated material.
+The sparse path uses 128-bit rolling q-gram fingerprints, rightmost-minimum winnowing, rare-first positional postings, shifted diagonal voting, monotone chains, and exact verification.
 
 ### Multi-view consensus
 
 ```bash
 cargo run --release -p fo-cli --bin fo-multiview -- build \
-  ./documents \
-  --output corpus.fomv \
-  --preset balanced
+  ./documents --output corpus.fomv --preset balanced
 ```
 
-Short q-grams recover heavily edited text; long q-grams suppress common-feature collisions. Cross-view agreement becomes an explicit precision signal.
+Short q-grams recover heavily edited text; long q-grams suppress common-feature collisions. Cross-view agreement is an explicit precision signal.
 
 ### Adaptive planning
 
 ```bash
 cargo run --release -p fo-cli --bin fo-plan -- \
-  corpus.foidx specimen.txt \
-  --execute \
-  --json
+  corpus.foidx specimen.txt --execute --json
 ```
 
-The planner reports entropy, repetition, feature retention, missing and suppressed features, estimated posting-pair work, route, effective cap, and route advisories.
+The planner reports entropy, repetition, feature retention, suppressed features, predicted posting work, selected route, and effective work limits.
 
-### Parallel batches
+### Parallel and incremental operation
 
 ```bash
 cargo run --release -p fo-cli --bin fo-batch -- \
-  corpus.foidx queries.jsonl \
-  --output results.jsonl \
-  --threads 32
-```
+  corpus.foidx queries.jsonl --output results.jsonl --threads 32
 
-One immutable index remains resident while independent specimens occupy separate cores. Identical specimens are deduplicated before execution.
-
-### Incremental segmented corpora
-
-```bash
 cargo run --release -p fo-cli --bin fo-segment -- create corpus.fosegments
 cargo run --release -p fo-cli --bin fo-segment -- append corpus.fosegments ./new-documents
 cargo run --release -p fo-cli --bin fo-segment -- compact corpus.fosegments
 ```
 
-Immutable segments, stable global document IDs, tombstones, generation checks, verification, and compaction allow the corpus to grow without rebuilding every prior segment.
+One resident immutable index can serve parallel specimens. Growing corpora can append immutable segments, apply tombstones, and compact later.
 
-## Ranking, feedback, and evaluation
+### Dense categorical correlation
 
-The repository includes native tooling for:
-
-- tie-correct AUPRC and PR curves;
-- Brier score, log loss, ECE, and MCE;
-- query-group macro AUPRC;
-- tie-aware expected MRR, Recall@k, and nDCG@k;
-- query-bootstrap confidence intervals;
-- slice-aware worst-cohort evaluation;
-- PAN precision, recall, granularity, and PlagDet;
-- logistic probability calibration;
-- query-grouped hard-negative pairwise ranking;
-- AP-delta-weighted listwise ranking;
-- active-learning queue construction;
-- false-discovery and conformal acceptance policies;
-- statistically gated model tournaments.
-
-These tools keep candidate generation, exact verification, ranking, calibration, acceptance policy, and deployment promotion separate and auditable.
-
-## Dense categorical correlation
-
-For direct workloads below the configured crossover, dense scan computes exact positional equality.
-
-Above the crossover, the FrankenSciPy feature uses deterministic unit-circle phase embeddings. Equal categories contribute one; independently hashed unequal categories cancel in expectation. Each repetition needs two real correlations instead of one correlation per hash bucket.
+Below the configured crossover, dense scan computes exact positional equality. Above it, the optional FrankenSciPy path uses unit-circle phase embeddings and FFT correlation.
 
 ```bash
 cargo build --release -p fo-cli --features frankenscipy
@@ -384,29 +214,128 @@ cargo run --release -p fo-cli --features frankenscipy -- \
   scan large-document.txt specimen.txt
 ```
 
-Dense mode is useful when:
+Dense mode is for unindexed text or all-offset scoring. Sparse search remains the default for repeated corpus queries because it avoids reading unrelated text.
 
-- the corpus is not indexed;
-- a score is needed at every offset;
-- many prepared specimens can amortize spectra;
-- a future device backend can retain buffers and scratch.
+## Real corpora
 
-Sparse indexed search remains the default for repeated queries because it avoids reading unrelated corpus text.
+Download and verify Project Gutenberg books:
 
-## Workspace
+```bash
+cargo run --release -p fo-corpus -- gutenberg \
+  --preset smoke --output corpora/gutenberg-smoke
+```
+
+Download SEC 10-K filings with a declared identity:
+
+```bash
+export SEC_USER_AGENT='Example Research research@example.com'
+
+cargo run --release -p fo-corpus -- sec10k \
+  --preset standard --output corpora/sec-standard
+```
+
+Turn whole books and filings into meaningful retrieval units:
+
+```bash
+cargo run --release -p fo-corpus --bin fo-section -- \
+  corpora/gutenberg-standard \
+  --output corpora/gutenberg-chapters \
+  --strategy gutenberg
+
+cargo run --release -p fo-corpus --bin fo-section -- \
+  corpora/sec-standard \
+  --output corpora/sec-items \
+  --strategy sec10k
+```
+
+Manifests retain source URLs, provider snapshots, dates, identifiers, metadata, SHA-256 digests, and exact parent byte ranges.
+
+See [`docs/CORPUS_ACQUISITION.md`](docs/CORPUS_ACQUISITION.md) and [`docs/CORPUS_SECTIONING.md`](docs/CORPUS_SECTIONING.md).
+
+## Prove it instead of asserting it
+
+Create curated Gutenberg scenarios:
+
+```bash
+cargo run --release -p fo-bench --bin fo-showcase -- \
+  gutenberg --output showcase/gutenberg
+```
+
+Create SEC filing-history scenarios:
+
+```bash
+SEC_USER_AGENT='Example Research research@example.com' \
+cargo run --release -p fo-bench --bin fo-showcase -- \
+  sec10k --output showcase/sec-10k
+```
+
+Run the full immutable proof transaction:
+
+```bash
+cargo run --release -p fo-bench --bin fo-evidence-suite -- \
+  showcase/gutenberg/sections \
+  showcase/gutenberg/queries.jsonl \
+  --claim-manifest evidence/gutenberg-claims.json \
+  --output evidence-runs/gutenberg-final
+```
+
+The suite compares identical candidate universes across:
 
 ```text
-crates/
-  fo-core/          indexing, retrieval, alignment, ranking evidence, storage, metrics
-  fo-cli/           search, batch, composite, multiview, planner, segment, profile CLIs
-  fo-corpus/        Gutenberg/SEC acquisition, manifests, verification, section derivation
-  fo-bench/         synthetic/real benchmarks, tuning, ranking, active learning, experiments
-  fo-conformance/   cross-module behavioral and corruption contracts
-  franken-overlap/  public facade crate
-
-docs/               algorithm, format, benchmark, corpus, and deployment contracts
-fixtures/           deterministic conformance corpus
+normalized exact substring
+character q-gram Jaccard
+character q-gram SimHash
+fielded BM25 + phrase + proximity
+bounded exhaustive semi-global Levenshtein
+FrankenOverlap sparse alignment
+unified hybrid retrieval
 ```
+
+It measures micro and macro query AUPRC, Recall@1/5/10, MRR, nDCG, false positives per query, span accuracy, p50/p95/p99, throughput, build time, index size, and break-even query count. Exhaustive work that exceeds a declared dynamic-programming budget is marked incomplete rather than extrapolated.
+
+Evidence output includes:
+
+```text
+suite-status.json
+proof.json
+scores.jsonl
+claims.json
+bundle/RESULTS.md
+bundle/RESULTS.html
+bundle/environment.json
+bundle/examples.json
+bundle/artifacts.json
+suite.json
+```
+
+Ambiguous natural positives can be reviewed with `fo-adjudicate`; statistical comparisons can be preregistered with `fo-claim-gate`; standalone reports can be rendered with `fo-proof-report`.
+
+See:
+
+- [`docs/REAL_SHOWCASE_SCENARIOS.md`](docs/REAL_SHOWCASE_SCENARIOS.md)
+- [`docs/SCENARIO_PROOF_BENCHMARK.md`](docs/SCENARIO_PROOF_BENCHMARK.md)
+- [`docs/GOLD_ADJUDICATION.md`](docs/GOLD_ADJUDICATION.md)
+- [`docs/PAIRED_CLAIM_GATES.md`](docs/PAIRED_CLAIM_GATES.md)
+- [`docs/EVIDENCE_BUNDLES.md`](docs/EVIDENCE_BUNDLES.md)
+- [`docs/EVIDENCE_SUITE.md`](docs/EVIDENCE_SUITE.md)
+
+## Accretive learning and deployment
+
+The repository includes:
+
+- held-out hybrid fusion tuning;
+- logistic probability calibration;
+- query-grouped hard-negative ranking;
+- AP-delta-weighted listwise ranking;
+- active-learning review queues;
+- false-discovery and conformal acceptance policies;
+- slice-aware worst-cohort evaluation;
+- append-only experiment history;
+- atomic corpus-specific profile promotion.
+
+Training, evaluation, claim support, and deployment promotion are separate operations. A new profile can be retained as evidence without being promoted.
+
+See [`docs/HYBRID_TUNING.md`](docs/HYBRID_TUNING.md), [`docs/EXPERIMENT_LEDGER.md`](docs/EXPERIMENT_LEDGER.md), and [`docs/ACTIVE_LEARNING.md`](docs/ACTIVE_LEARNING.md).
 
 ## Rust API
 
@@ -437,43 +366,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Correctness and storage invariants
+## Workspace
 
-- Token IDs are categorical labels.
-- No corpus-wide edit-distance scan is used as retrieval.
-- No `N × pattern_length` window matrix is materialized.
+```text
+crates/
+  fo-core/          indexing, retrieval, alignment, storage, ranking evidence, metrics
+  fo-cli/           overlap, lexical, hybrid, batch, composite, multiview, planner, segment CLIs
+  fo-corpus/        Gutenberg/SEC acquisition, manifests, verification, section derivation
+  fo-bench/         benchmarks, baselines, adjudication, claims, evidence, tuning, experiments
+  fo-conformance/   behavioral, persistence, and corruption contracts
+  franken-overlap/  public facade crate
+
+docs/               algorithm, format, benchmark, corpus, evidence, and deployment contracts
+fixtures/           deterministic conformance corpus
+```
+
+## Correctness and performance doctrine
+
+- Token and vocabulary IDs are categorical labels.
+- No corpus-wide edit-distance matrix is used as the normal retrieval path.
 - Matches cannot cross document boundaries.
-- Approximate generators do not bypass exact lexical verification.
-- Unknown binary and manifest semantics fail closed.
-- Persistent postings are sorted and validated.
-- Checksummed delta-varint `.foidx` v2 remains backward-compatible with strict v1 loading.
-- Unsafe paths, impossible counts, malformed varints, overflow, mismatched identities, checksum failures, and trailing bytes are rejected.
-- Query-group splits remain intact during tuning and evaluation.
-- Profile promotion is separate from profile training.
+- Approximate candidates do not bypass exact textual verification.
+- Persistent index and manifest semantics fail closed.
+- Query groups remain intact during tuning, resampling, and evaluation.
+- Incomplete exhaustive runs remain explicitly incomplete.
+- Public speed or quality claims require a checked-in evidence bundle with corpus, query, commit, compiler, hardware, baseline, quality, span, latency, and uncertainty receipts.
 
-## Performance doctrine
-
-No algorithm is universally optimal. FrankenOverlap maintains a measured portfolio:
-
-| Workload | Preferred route |
-|---|---|
-| Very short specimen | exact search / Myers bit-vector infix |
-| Static corpus, repeated specimen queries | sparse winnowed index |
-| Short keyword or fielded query | positional lexical index |
-| Medium natural-language query | lexical/overlap hybrid |
-| Long fragmented specimen | composite passage aggregation |
-| Several edit regimes | multi-view q-gram consensus |
-| Unindexed resident text | exact direct or phase-sketch FFT |
-| Many independent specimens | stable-order parallel batch |
-| Continuously growing corpus | immutable segmented index |
-
-Performance claims require the corpus, query distribution, compiler, hardware, commit, feature set, quality metrics, latency distribution, allocations/RSS, and before/after result.
+Until those conditions are met, superiority claims are hypotheses rather than project facts.
 
 ## Validation
 
 The repository uses the moving latest Rust nightly selected by `rust-toolchain.toml` and does not depend on active GitHub Actions workflows.
-
-Required checks:
 
 ```bash
 cargo fmt --all -- --check
