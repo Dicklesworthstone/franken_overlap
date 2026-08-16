@@ -163,8 +163,8 @@ fn run_document(command: DocumentCommand) -> CliResult<()> {
     let text = fs::read_to_string(&command.input)?;
     let analysis = analyze_contract(&text, command.profile.into(), &command.limits.into())?;
     let bytes = serde_json::to_vec_pretty(&analysis)?;
-    if let Some(path) = command.output {
-        atomic_write(&path, &bytes)?;
+    if let Some(path) = command.output.as_ref() {
+        atomic_write(path, &bytes)?;
     }
     if command.json || command.output.is_none() {
         println!("{}", String::from_utf8(bytes)?);
@@ -254,7 +254,7 @@ fn run_collection(command: CollectionCommand) -> CliResult<()> {
                 total_obligations += analysis.obligations.len();
                 total_economic_terms += analysis.economic_terms.len();
                 for (kind, count) in &analysis.clause_counts {
-                    *clause_counts.entry(*kind).or_insert(0usize) += count;
+                    *clause_counts.entry(*kind).or_insert(0usize) += *count;
                 }
                 for warning in &analysis.warnings {
                     *warning_counts.entry(warning.code.clone()).or_insert(0usize) += 1;
