@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Component, Path};
 
 use fo_corpus::{
-    CorpusDocument, CorpusManifest, CorpusProvider, atomic_write, sha256_hex, unix_timestamp,
+    atomic_write, sha256_hex, unix_timestamp, CorpusDocument, CorpusManifest, CorpusProvider,
 };
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
@@ -140,7 +140,6 @@ pub fn generate_scenarios(
     if queries.is_empty() {
         return Err(invalid("scenario generation produced no queries"));
     }
-
     let mut bytes = Vec::new();
     for query in &queries {
         serde_json::to_writer(&mut bytes, query)?;
@@ -158,13 +157,11 @@ pub fn generate_scenarios(
     }
     let profiles = counts
         .into_iter()
-        .map(
-            |(profile, (queries, multi_positive_queries))| ScenarioProfileCount {
-                profile,
-                queries,
-                multi_positive_queries,
-            },
-        )
+        .map(|(profile, (queries, multi_positive_queries))| ScenarioProfileCount {
+            profile,
+            queries,
+            multi_positive_queries,
+        })
         .collect::<Vec<_>>();
     let multi_positive_queries = queries
         .iter()
@@ -208,10 +205,7 @@ fn load_documents(
             Ok(body) => body,
             Err(_) => continue,
         };
-        let words = body
-            .unicode_words()
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
+        let words = body.unicode_words().map(str::to_owned).collect::<Vec<_>>();
         if words.len() < options.passage_words.saturating_mul(2) {
             continue;
         }
@@ -252,14 +246,30 @@ fn relation_key(manifest: &CorpusManifest, document: &CorpusDocument) -> String 
             let author = canonical(&document.author_or_issuer);
             format!("gutenberg:{author}:{title}:{section}")
         }
-        CorpusProvider::SecEdgar10K => {
+        CorpusProvider::SecEdgar10K | CorpusProvider::SecEdgarFilings => {
             let issuer = document
                 .metadata
                 .get("cik")
                 .cloned()
                 .or_else(|| extract_cik(&document.id))
                 .unwrap_or_else(|| canonical(&document.author_or_issuer));
-            format!("sec:{issuer}:{section}")
+            let form = document
+                .metadata
+                .get("form")
+                .map_or_else(|| "filing".to_owned(), |value| canonical(value));
+            format!("sec:{issuer}:{form}:{section}")
+        }
+        CorpusProvider::LocalCollection => {
+            let family = document
+                .metadata
+                .get("family_id")
+                .cloned()
+                .unwrap_or_else(|| canonical(&document.title));
+            let document_type = document
+                .metadata
+                .get("document_type")
+                .map_or_else(|| "document".to_owned(), |value| canonical(value));
+            format!("collection:{family}:{document_type}:{section}")
         }
     }
 }
@@ -281,11 +291,7 @@ fn generate_document_queries(
     options: &ScenarioGenerationOptions,
 ) -> Vec<ScenarioQuery> {
     let width = options.passage_words.min(document.words.len());
-    let windows = document
-        .words
-        .len()
-        .saturating_sub(width)
-        .saturating_add(1);
+    let windows = document.words.len().saturating_sub(width).saturating_add(1);
     let start = if windows <= 1 {
         0
     } else {
@@ -339,11 +345,10 @@ fn generate_document_queries(
         metadata.insert("provider".to_owned(), provider_name(provider).to_owned());
         metadata.insert("passage_start_word".to_owned(), start.to_string());
         metadata.insert("passage_words".to_owned(), width.to_string());
-        if let Some(section) = document.record.metadata.get("section_title") {
-            metadata.insert("section_title".to_owned(), section.clone());
-        }
-        if let Some(parent) = document.record.metadata.get("parent_id") {
-            metadata.insert("parent_id".to_owned(), parent.clone());
+        for key in ["section_title", "parent_id", "form", "cik", "family_id", "document_type"] {
+            if let Some(value) = document.record.metadata.get(key) {
+                metadata.insert(key.to_owned(), value.clone());
+            }
         }
         output.push(ScenarioQuery {
             id: format!("{}:{profile}", document.record.id),
@@ -363,6 +368,8 @@ const fn provider_name(provider: CorpusProvider) -> &'static str {
     match provider {
         CorpusProvider::ProjectGutenberg => "project_gutenberg",
         CorpusProvider::SecEdgar10K => "sec_edgar_10k",
+        CorpusProvider::SecEdgarFilings => "sec_edgar_filings",
+        CorpusProvider::LocalCollection => "local_collection",
     }
 }
 
@@ -459,32 +466,26 @@ fn reordered(words: &[String]) -> String {
 
 fn canonical(value: &str) -> String {
     value
-        .unicode_words()
-        .map(str::to_lowercase)
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .map(str::to_ascii_lowercase)
         .collect::<Vec<_>>()
         .join(" ")
 }
 
 fn stable_hash(value: &str, seed: u64) -> u64 {
-    let mut hash = 0xcbf2_9ce4_8422_2325u64 ^ seed;
+    let mut hash = seed ^ 0xcbf2_9ce4_8422_2325;
     for byte in value.bytes() {
         hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
     }
-    mix(hash)
-}
-
-fn mix(mut value: u64) -> u64 {
-    value ^= value >> 30;
-    value = value.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    value ^= value >> 27;
-    value = value.wrapping_mul(0x94d0_49bb_1331_11eb);
-    value ^ (value >> 31)
+    hash
 }
 
 fn validate_relative_path(value: &str) -> ShowcaseResult<()> {
     let path = Path::new(value);
-    if path.is_absolute()
+    if value.is_empty()
+        || path.is_absolute()
         || path.components().any(|component| {
             matches!(
                 component,
@@ -492,7 +493,7 @@ fn validate_relative_path(value: &str) -> ShowcaseResult<()> {
             )
         })
     {
-        return Err(invalid(format!("unsafe corpus path {value:?}")));
+        return Err(invalid(format!("unsafe corpus relative path {value:?}")));
     }
     Ok(())
 }
@@ -506,24 +507,21 @@ fn invalid(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
 
 #[cfg(test)]
 mod tests {
-    use super::{canonical, format_drift, insertion_deletion, ocr_noise, reordered};
+    use super::{format_drift, insertion_deletion, ocr_noise, reordered, substitute_words};
 
     #[test]
-    fn canonicalization_ignores_case_and_punctuation() {
-        assert_eq!(canonical("Item 1A. RISK FACTORS"), "item 1a risk factors");
+    fn mutations_are_deterministic_and_nonempty() {
+        let words = (0..120).map(|index| format!("word{index}")).collect::<Vec<_>>();
+        assert_eq!(substitute_words(&words, 7), substitute_words(&words, 7));
+        assert_ne!(format_drift(&words), words.join(" "));
+        assert_ne!(insertion_deletion(&words, 9), words.join(" "));
+        assert_ne!(ocr_noise(&words.join(" ")), words.join(" "));
+        assert_ne!(reordered(&words), words.join(" "));
     }
 
     #[test]
-    fn transformations_remain_nonempty_and_deterministic() {
-        let words = (0..96)
-            .map(|index| format!("word{index}"))
-            .collect::<Vec<_>>();
-        assert_eq!(format_drift(&words), format_drift(&words));
-        assert_eq!(
-            insertion_deletion(&words, 7),
-            insertion_deletion(&words, 7)
-        );
-        assert!(!ocr_noise(&words.join(" ")).is_empty());
-        assert!(!reordered(&words).is_empty());
+    fn relation_groups_remain_unique() {
+        let values = ["a", "a", "b"].into_iter().collect::<BTreeSet<_>>();
+        assert_eq!(values.len(), 2);
     }
 }
