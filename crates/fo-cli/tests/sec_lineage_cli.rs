@@ -101,7 +101,6 @@ fn builds_a_filing_history_alert_and_lineage_edge() {
         &fs::read(output.join("lineage.json")).expect("lineage"),
     )
     .expect("parse lineage");
-    assert_eq!(lineage["nodes"].as_object().map(BTreeMap::len), None);
     assert_eq!(lineage["nodes"].as_object().map(|nodes| nodes.len()), Some(3));
     assert!(lineage["edges"].as_object().is_some_and(|edges| !edges.is_empty()));
     assert!(output.join("SUMMARY.md").is_file());
