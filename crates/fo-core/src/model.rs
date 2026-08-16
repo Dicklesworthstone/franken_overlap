@@ -255,15 +255,6 @@ pub struct SearchResult {
     pub distinct_anchor_count: usize,
     #[serde(default)]
     pub estimated_false_matches: f64,
-    /// Fraction of selected query-feature occurrences retained after common-feature suppression.
-    #[serde(default)]
-    pub informative_feature_fraction: f32,
-    /// Number of selected query-feature occurrences suppressed by frequency or work-budget policy.
-    #[serde(default)]
-    pub suppressed_feature_occurrences: usize,
-    /// Mean IDF of the anchors that survived the query policy.
-    #[serde(default)]
-    pub mean_anchor_idf: f32,
     pub combined_score: f32,
     pub matched_text: String,
 }
