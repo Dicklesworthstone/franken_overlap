@@ -25,6 +25,7 @@ mod provenance;
 mod ranking;
 mod search;
 mod segmented;
+mod semantic;
 pub mod spectral;
 mod storage_v2;
 mod verify;
@@ -100,6 +101,11 @@ pub use segmented::{
     SegmentAppendReport, SegmentCompactionReport, SegmentDeleteReport, SegmentDescriptor,
     SegmentDocumentInput, SegmentDocumentRecord, SegmentVerificationReport, SegmentedIndex,
     SegmentedIndexStats, SegmentedManifest, SegmentedSearchResult,
+};
+pub use semantic::{
+    SEMANTIC_FUSION_SCHEMA_VERSION, SemanticCandidateSet, SemanticEvidence,
+    SemanticFusionOptions, SemanticFusionReport, SemanticFusionResult,
+    SemanticRelationshipClass, SemanticScoreExplanation, fuse_semantic_candidates,
 };
 pub use spectral::{SpectralOptions, SpectralPeak, spectral_scan};
 pub use storage_v2::{IndexFileStats, IndexSaveOptions, IndexStorageFormat};
