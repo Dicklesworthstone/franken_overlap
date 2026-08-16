@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod collection;
+mod collection_metadata_serialize;
 mod gutenberg;
 mod http;
 mod model;
