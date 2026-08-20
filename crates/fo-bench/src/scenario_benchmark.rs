@@ -302,7 +302,11 @@ impl SpanAccumulator {
         MethodSpanReport {
             eligible_queries: self.eligible_queries,
             predicted_queries: self.predicted_queries,
-            mean_iou: mean(self.observations.iter().map(|value| value.intersection_over_union)),
+            mean_iou: mean(
+                self.observations
+                    .iter()
+                    .map(|value| value.intersection_over_union),
+            ),
             median_iou: median(
                 &self
                     .observations
@@ -515,9 +519,8 @@ pub fn read_queries(path: &Path) -> ScenarioBenchResult<Vec<BenchmarkQuery>> {
         if value.is_empty() || value.starts_with('#') {
             continue;
         }
-        let query = serde_json::from_str::<BenchmarkQuery>(value).map_err(|error| {
-            invalid(format!("{}:{}: {error}", path.display(), line_index + 1))
-        })?;
+        let query = serde_json::from_str::<BenchmarkQuery>(value)
+            .map_err(|error| invalid(format!("{}:{}: {error}", path.display(), line_index + 1)))?;
         if query.id.trim().is_empty()
             || query.profile.trim().is_empty()
             || query.text.trim().is_empty()
@@ -567,22 +570,14 @@ pub fn run_scenario_benchmark(
         .collect::<BTreeSet<_>>();
     let pool = load_document_pool(corpus_root, &manifest, &required_ids, options)?;
     let required_count = required_ids.len();
-    let (sizes, skipped_sizes) = resolve_sizes(
-        &options.requested_corpus_sizes,
-        required_count,
-        pool.len(),
-    )?;
+    let (sizes, skipped_sizes) =
+        resolve_sizes(&options.requested_corpus_sizes, required_count, pool.len())?;
     let mut scales = Vec::new();
     let mut rows = Vec::new();
     for size in &sizes {
         let selected = select_scale_documents(&pool, &required_ids, *size);
-        let (scale, mut scale_rows) = run_scale(
-            corpus_root,
-            &queries,
-            selected,
-            required_count,
-            options,
-        )?;
+        let (scale, mut scale_rows) =
+            run_scale(corpus_root, &queries, selected, required_count, options)?;
         scales.push(scale);
         rows.append(&mut scale_rows);
     }
@@ -711,14 +706,21 @@ fn run_scale(
     for query in queries {
         let labels = documents
             .iter()
-            .map(|document| query.positive_ids.iter().any(|id| id == &document.record.id))
+            .map(|document| {
+                query
+                    .positive_ids
+                    .iter()
+                    .any(|id| id == &document.record.id)
+            })
             .collect::<Vec<_>>();
-        let source_index = *document_lookup.get(query.source_id.as_str()).ok_or_else(|| {
-            invalid(format!(
-                "query {} source {} is absent at corpus size {corpus_size}",
-                query.id, query.source_id
-            ))
-        })?;
+        let source_index = *document_lookup
+            .get(query.source_id.as_str())
+            .ok_or_else(|| {
+                invalid(format!(
+                    "query {} source {} is absent at corpus size {corpus_size}",
+                    query.id, query.source_id
+                ))
+            })?;
         let expected_span = expected_span(query, &documents[source_index], &profile);
         let normalized_query = baselines.normalize_query(&query.text);
 
@@ -727,13 +729,7 @@ fn run_scale(
                 baselines.exact_scores(&normalized_query),
             ))
         })?;
-        exact.observe(
-            query,
-            &labels,
-            &exact_measured,
-            expected_span,
-            source_index,
-        );
+        exact.observe(query, &labels, &exact_measured, expected_span, source_index);
 
         let jaccard_measured = measure_operation(options, || {
             Ok(ScoringOutput::scores_only(
@@ -774,13 +770,7 @@ fn run_scale(
 
         let search_options = search_options(corpus_size, normalized_query.len());
         let overlap_measured = measure_operation(options, || {
-            score_overlap(
-                &index,
-                query,
-                &documents,
-                &document_lookup,
-                &search_options,
-            )
+            score_overlap(&index, query, &documents, &document_lookup, &search_options)
         })?;
         overlap.observe(
             query,
@@ -791,13 +781,7 @@ fn run_scale(
         );
 
         let hybrid_measured = measure_operation(options, || {
-            score_hybrid(
-                &index,
-                query,
-                &documents,
-                &document_lookup,
-                &search_options,
-            )
+            score_hybrid(&index, query, &documents, &document_lookup, &search_options)
         })?;
         hybrid.observe(
             query,
@@ -815,10 +799,10 @@ fn run_scale(
         let exhaustive_output = baselines.exhaustive_scores(&normalized_query, remaining)?;
         let exhaustive_ms = exhaustive_started.elapsed().as_secs_f64() * 1_000.0;
         exhaustive_cells = exhaustive_cells.saturating_add(exhaustive_output.cells);
-        exhaustive_evaluated_pairs = exhaustive_evaluated_pairs
-            .saturating_add(exhaustive_output.evaluated_documents);
-        exhaustive_skipped_pairs = exhaustive_skipped_pairs
-            .saturating_add(exhaustive_output.skipped_documents);
+        exhaustive_evaluated_pairs =
+            exhaustive_evaluated_pairs.saturating_add(exhaustive_output.evaluated_documents);
+        exhaustive_skipped_pairs =
+            exhaustive_skipped_pairs.saturating_add(exhaustive_output.skipped_documents);
         if exhaustive_output.complete {
             exhaustive_complete_queries += 1;
             let scores = exhaustive_output
@@ -850,7 +834,10 @@ fn run_scale(
 
         for document_index in 0..documents.len() {
             let mut scores = BTreeMap::new();
-            scores.insert(METHOD_EXACT.to_owned(), exact_measured.output.scores[document_index]);
+            scores.insert(
+                METHOD_EXACT.to_owned(),
+                exact_measured.output.scores[document_index],
+            );
             scores.insert(
                 METHOD_JACCARD.to_owned(),
                 jaccard_measured.output.scores[document_index],
@@ -918,7 +905,9 @@ fn run_scale(
     let exhaustive = exhaustive.report(METHOD_EXHAUSTIVE, false, &build)?;
     let overlap = overlap.report(METHOD_OVERLAP, true, &build)?;
     let hybrid = hybrid.report(METHOD_HYBRID, true, &build)?;
-    let methods = vec![exact, jaccard, simhash, lexical, exhaustive, overlap, hybrid];
+    let methods = vec![
+        exact, jaccard, simhash, lexical, exhaustive, overlap, hybrid,
+    ];
     let break_even = break_even_comparisons(&methods, &build);
     let exhaustive = ExhaustiveScaleCoverage {
         complete: exhaustive_partial_queries == 0,
@@ -968,8 +957,7 @@ fn score_lexical(
     let mut scores = vec![0.0; documents.len()];
     for result in results {
         if let Some(&document_index) = document_lookup.get(result.external_id.as_str()) {
-            scores[document_index] =
-                1.0 - (-f64::from(result.score.max(0.0)) / 4.0).exp();
+            scores[document_index] = 1.0 - (-f64::from(result.score.max(0.0)) / 4.0).exp();
         }
     }
     Ok(ScoringOutput::scores_only(scores))
@@ -1109,7 +1097,7 @@ fn search_options(corpus_size: usize, query_tokens: usize) -> SearchOptions {
         minimum_query_coverage: 0.0,
         minimum_source_coverage: 0.0,
         direct_fallback_work_limit: 500_000_000,
-        short_query_candidates: corpus_size.min(4_096).max(8),
+        short_query_candidates: corpus_size.clamp(8, 4_096),
         minimum_similarity: 0.0,
         ..SearchOptions::default()
     }
@@ -1201,7 +1189,9 @@ fn resolve_sizes(
     available: usize,
 ) -> ScenarioBenchResult<(Vec<usize>, Vec<usize>)> {
     if required > available {
-        return Err(invalid("required positive documents exceed the loaded pool"));
+        return Err(invalid(
+            "required positive documents exceed the loaded pool",
+        ));
     }
     let mut candidates = if requested.is_empty() {
         vec![required, 10, 25, 50, 100, 250, available]
@@ -1279,7 +1269,12 @@ fn break_even_comparisons(
     let setup = build.build_ms + build.serialization_ms + build.cold_load_ms;
     let indexed = methods
         .iter()
-        .filter(|method| matches!(method.name.as_str(), METHOD_LEXICAL | METHOD_OVERLAP | METHOD_HYBRID))
+        .filter(|method| {
+            matches!(
+                method.name.as_str(),
+                METHOD_LEXICAL | METHOD_OVERLAP | METHOD_HYBRID
+            )
+        })
         .collect::<Vec<_>>();
     let baselines = methods
         .iter()
@@ -1318,16 +1313,19 @@ fn evaluation_options() -> GroupedEvaluationOptions {
 }
 
 fn index_directory(options: &ScenarioBenchmarkOptions, size: usize) -> PathBuf {
-    options.index_root.clone().unwrap_or_else(|| {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |duration| duration.as_nanos());
-        std::env::temp_dir().join(format!(
-            "franken-overlap-proof-index-{}-{nonce}",
-            std::process::id()
-        ))
-    })
-    .join(format!("size-{size}"))
+    options
+        .index_root
+        .clone()
+        .unwrap_or_else(|| {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |duration| duration.as_nanos());
+            std::env::temp_dir().join(format!(
+                "franken-overlap-proof-index-{}-{nonce}",
+                std::process::id()
+            ))
+        })
+        .join(format!("size-{size}"))
 }
 
 fn directory_bytes(path: &Path) -> ScenarioBenchResult<u64> {
@@ -1359,11 +1357,7 @@ fn peak_rss_kib() -> Option<u64> {
         .output()
         .ok()?;
     output.status.success().then_some(())?;
-    String::from_utf8(output.stdout)
-        .ok()?
-        .trim()
-        .parse()
-        .ok()
+    String::from_utf8(output.stdout).ok()?.trim().parse().ok()
 }
 
 fn percentile(sorted: &[f64], probability: f64) -> f64 {

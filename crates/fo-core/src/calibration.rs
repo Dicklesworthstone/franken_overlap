@@ -144,8 +144,7 @@ impl CalibrationModel {
             loss /= total_weight;
             loss += 0.5 * options.l2 * weights.iter().map(|weight| weight * weight).sum::<f64>();
 
-            let learning_rate =
-                options.learning_rate / (1.0 + epoch as f64 / 100.0).sqrt();
+            let learning_rate = options.learning_rate / (1.0 + epoch as f64 / 100.0).sqrt();
             bias -= learning_rate * bias_gradient / total_weight;
             for (weight, gradient) in weights.iter_mut().zip(weight_gradient) {
                 let regularized = gradient / total_weight + options.l2 * *weight;
@@ -166,10 +165,7 @@ impl CalibrationModel {
 
         let mut model = Self {
             schema_version: CALIBRATION_SCHEMA_VERSION,
-            feature_names: feature_names()
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
+            feature_names: feature_names().into_iter().map(str::to_owned).collect(),
             means: means.to_vec(),
             scales: scales.to_vec(),
             weights: weights.to_vec(),
@@ -234,9 +230,7 @@ impl CalibrationModel {
                 )));
             }
         }
-        if self.scales.iter().any(|scale| *scale <= 0.0)
-            || !self.bias.is_finite()
-        {
+        if self.scales.iter().any(|scale| *scale <= 0.0) || !self.bias.is_finite() {
             return Err(FoError::InvalidConfig(
                 "calibration model contains invalid scale or bias values".to_owned(),
             ));
@@ -289,10 +283,8 @@ impl CalibrationModel {
 #[must_use]
 pub fn evidence_vector(result: &SearchResult) -> [f64; CALIBRATION_FEATURE_COUNT] {
     let length_factor = 1.0 - (-(result.matched_tokens as f64) / 32.0).exp();
-    let anchor_count_factor =
-        1.0 - (-(result.distinct_anchor_count as f64) / 8.0).exp();
-    let false_match_confidence =
-        1.0 / (1.0 + result.estimated_false_matches.max(0.0));
+    let anchor_count_factor = 1.0 - (-(result.distinct_anchor_count as f64) / 8.0).exp();
+    let false_match_confidence = 1.0 / (1.0 + result.estimated_false_matches.max(0.0));
     [
         f64::from(result.combined_score.clamp(0.0, 1.0)),
         f64::from(result.edit_similarity.clamp(0.0, 1.0)),
@@ -348,9 +340,7 @@ fn validate_feedback(examples: &[FeedbackExample]) -> Result<()> {
     Ok(())
 }
 
-fn feature_means(
-    rows: &[[f64; CALIBRATION_FEATURE_COUNT]],
-) -> [f64; CALIBRATION_FEATURE_COUNT] {
+fn feature_means(rows: &[[f64; CALIBRATION_FEATURE_COUNT]]) -> [f64; CALIBRATION_FEATURE_COUNT] {
     let mut means = [0.0; CALIBRATION_FEATURE_COUNT];
     for row in rows {
         for (mean, value) in means.iter_mut().zip(row) {
@@ -390,10 +380,7 @@ fn standardize(
     std::array::from_fn(|feature| (row[feature] - means[feature]) / scales[feature])
 }
 
-fn dot(
-    left: &[f64; CALIBRATION_FEATURE_COUNT],
-    right: &[f64; CALIBRATION_FEATURE_COUNT],
-) -> f64 {
+fn dot(left: &[f64; CALIBRATION_FEATURE_COUNT], right: &[f64; CALIBRATION_FEATURE_COUNT]) -> f64 {
     left.iter()
         .zip(right)
         .map(|(left, right)| *left * *right)
@@ -517,10 +504,7 @@ mod tests {
         )
         .expect("fit");
         let reranked = model
-            .rerank(&[
-                examples[1].result.clone(),
-                examples[0].result.clone(),
-            ])
+            .rerank(&[examples[1].result.clone(), examples[0].result.clone()])
             .expect("rerank");
         assert!(reranked[0].probability > reranked[1].probability);
         assert!(reranked[0].result.query_coverage > reranked[1].result.query_coverage);

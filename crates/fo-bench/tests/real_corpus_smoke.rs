@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use fo_corpus::{sha256_hex, CorpusDocument, CorpusManifest, CorpusProvider};
+use fo_corpus::{CorpusDocument, CorpusManifest, CorpusProvider, sha256_hex};
 
 #[test]
 fn benchmarks_a_small_manifest_end_to_end() {
@@ -63,25 +63,19 @@ fn benchmarks_a_small_manifest_end_to_end() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let report: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse report");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse report");
     assert_eq!(report["indexed_documents"], 2);
     assert_eq!(report["queries"], 4);
-    assert!(
-        report["methods"]
-            .as_array()
-            .is_some_and(|methods| methods.iter().any(|method| method["name"] == "franken_hybrid"))
-    );
+    assert!(report["methods"].as_array().is_some_and(|methods| {
+        methods
+            .iter()
+            .any(|method| method["name"] == "franken_hybrid")
+    }));
 
     fs::remove_dir_all(root).ok();
 }
 
-fn document_record(
-    id: &str,
-    relative_path: &str,
-    title: &str,
-    body: &str,
-) -> CorpusDocument {
+fn document_record(id: &str, relative_path: &str, title: &str, body: &str) -> CorpusDocument {
     CorpusDocument {
         id: id.to_owned(),
         relative_path: relative_path.to_owned(),

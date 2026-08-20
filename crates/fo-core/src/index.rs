@@ -124,7 +124,10 @@ impl Index {
                 entry.postings.len()
             )));
         }
-        if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
             fs::create_dir_all(parent).map_err(|error| FoError::io(parent, error))?;
         }
         let temporary = temporary_path(path);
@@ -135,8 +138,11 @@ impl Index {
             .write_all(MAGIC)
             .and_then(|()| writer.write_all(&FORMAT_VERSION.to_le_bytes()))
             .map_err(|error| FoError::io(&temporary, error))?;
-        write_u32(&mut writer, checked_u32(self.config.qgram_size, "q-gram size")?)
-            .map_err(|error| FoError::io(&temporary, error))?;
+        write_u32(
+            &mut writer,
+            checked_u32(self.config.qgram_size, "q-gram size")?,
+        )
+        .map_err(|error| FoError::io(&temporary, error))?;
         write_u32(
             &mut writer,
             checked_u32(self.config.winnow_window, "winnow window")?,
@@ -155,12 +161,7 @@ impl Index {
         }
         write_u32(&mut writer, flags).map_err(|error| FoError::io(&temporary, error))?;
         writer
-            .write_all(&[
-                self.config.normalization.punctuation.as_u8(),
-                0,
-                0,
-                0,
-            ])
+            .write_all(&[self.config.normalization.punctuation.as_u8(), 0, 0, 0])
             .map_err(|error| FoError::io(&temporary, error))?;
 
         write_u32(
@@ -168,8 +169,7 @@ impl Index {
             checked_u32(self.documents.len(), "document count")?,
         )
         .map_err(|error| FoError::io(&temporary, error))?;
-        write_u64(&mut writer, entry_count)
-            .map_err(|error| FoError::io(&temporary, error))?;
+        write_u64(&mut writer, entry_count).map_err(|error| FoError::io(&temporary, error))?;
 
         for document in &self.documents {
             write_u32(&mut writer, document.id)
@@ -194,7 +194,9 @@ impl Index {
             }
         }
 
-        writer.flush().map_err(|error| FoError::io(&temporary, error))?;
+        writer
+            .flush()
+            .map_err(|error| FoError::io(&temporary, error))?;
         let file = writer
             .into_inner()
             .map_err(|error| FoError::io(&temporary, error.into_error()))?;
@@ -299,10 +301,10 @@ impl Index {
                     "document id {id} appears where {expected_id} was expected"
                 )));
             }
-            let document_path = read_string(&mut reader, file_len)
-                .map_err(|error| FoError::io(path, error))?;
-            let normalized_text = read_string(&mut reader, file_len)
-                .map_err(|error| FoError::io(path, error))?;
+            let document_path =
+                read_string(&mut reader, file_len).map_err(|error| FoError::io(path, error))?;
+            let normalized_text =
+                read_string(&mut reader, file_len).map_err(|error| FoError::io(path, error))?;
             let normalized = NormalizedText::from_stored(normalized_text);
             if normalized.tokens.len() > u32::MAX as usize {
                 return Err(FoError::InvalidIndex(format!(
@@ -357,10 +359,8 @@ impl Index {
             let mut last_document = None;
             for _ in 0..posting_count {
                 let posting = Posting {
-                    document_id: read_u32(&mut reader)
-                        .map_err(|error| FoError::io(path, error))?,
-                    position: read_u32(&mut reader)
-                        .map_err(|error| FoError::io(path, error))?,
+                    document_id: read_u32(&mut reader).map_err(|error| FoError::io(path, error))?,
+                    position: read_u32(&mut reader).map_err(|error| FoError::io(path, error))?,
                 };
                 let Some(document) = documents.get(posting.document_id as usize) else {
                     return Err(FoError::InvalidIndex(format!(
@@ -371,7 +371,7 @@ impl Index {
                 let position = posting.position as usize;
                 if position
                     .checked_add(config.qgram_size)
-                    .map_or(true, |end| end > document.normalized.tokens.len())
+                    .is_none_or(|end| end > document.normalized.tokens.len())
                 {
                     return Err(FoError::InvalidIndex(format!(
                         "posting position {} is outside document {}",
@@ -475,13 +475,10 @@ impl IndexBuilder {
                 position,
             } in winnow(&hashes, self.config.winnow_window)
             {
-                posting_map
-                    .entry(fingerprint)
-                    .or_default()
-                    .push(Posting {
-                        document_id: document.id,
-                        position,
-                    });
+                posting_map.entry(fingerprint).or_default().push(Posting {
+                    document_id: document.id,
+                    position,
+                });
             }
         }
         let mut entries = Vec::with_capacity(posting_map.len());

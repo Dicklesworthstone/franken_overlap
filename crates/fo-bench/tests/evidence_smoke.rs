@@ -5,9 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use fo_core::{
-    GroupedEvaluationOptions, GroupedLabeledScore, grouped_evaluation_report,
-};
+use fo_core::{GroupedEvaluationOptions, GroupedLabeledScore, grouped_evaluation_report};
 use serde_json::json;
 
 #[test]
@@ -35,8 +33,8 @@ fn creates_a_query_paired_evidence_bundle() {
         bootstrap_samples: 0,
         ..GroupedEvaluationOptions::default()
     };
-    let selected_report = grouped_evaluation_report(&selected_rows, evaluation.clone())
-        .expect("selected report");
+    let selected_report =
+        grouped_evaluation_report(&selected_rows, evaluation.clone()).expect("selected report");
     let baseline_report =
         grouped_evaluation_report(&baseline_rows, evaluation).expect("baseline report");
     let report = json!({
@@ -126,10 +124,9 @@ fn creates_a_query_paired_evidence_bundle() {
     ] {
         assert!(output.join(filename).is_file(), "missing {filename}");
     }
-    let evidence: serde_json::Value = serde_json::from_slice(
-        &fs::read(output.join("evidence.json")).expect("read evidence"),
-    )
-    .expect("parse evidence");
+    let evidence: serde_json::Value =
+        serde_json::from_slice(&fs::read(output.join("evidence.json")).expect("read evidence"))
+            .expect("parse evidence");
     assert_eq!(
         evidence["verdict"]["claim"],
         "quality_and_wall_time_superiority_supported"

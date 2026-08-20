@@ -2,9 +2,9 @@ use std::io::Read;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use reqwest::StatusCode;
 use reqwest::blocking::{Client, Response};
 use reqwest::header::{ACCEPT_ENCODING, ETAG, LAST_MODIFIED, USER_AGENT};
-use reqwest::StatusCode;
 
 use crate::{CorpusError, Result};
 
@@ -102,8 +102,7 @@ impl DownloadClient {
                 Ok(response) => {
                     let status = response.status();
                     last_status = Some(status);
-                    if !is_retryable_status(status)
-                        || attempt + 1 >= self.options.maximum_attempts
+                    if !is_retryable_status(status) || attempt + 1 >= self.options.maximum_attempts
                     {
                         return Err(CorpusError::HttpStatus {
                             url: url.to_owned(),

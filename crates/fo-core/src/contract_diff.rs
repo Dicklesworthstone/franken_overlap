@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    global_levenshtein, normalize, qgram_hashes, ClauseKind, ContractAnalysis,
-    ContractClause, ContractObligation, DefinedTerm, EconomicTerm, EconomicTermKind, Fingerprint,
-    FoError, NormalizationProfile, ObligationModality, Result,
+    ClauseKind, ContractAnalysis, ContractClause, ContractObligation, DefinedTerm, EconomicTerm,
+    EconomicTermKind, Fingerprint, FoError, NormalizationProfile, ObligationModality, Result,
+    global_levenshtein, normalize, qgram_hashes,
 };
 
 pub const CONTRACT_COMPARISON_SCHEMA_VERSION: u32 = 1;
@@ -183,7 +183,10 @@ impl Default for ContractComparisonOptions {
 impl ContractComparisonOptions {
     pub fn validate(&self) -> Result<()> {
         for (name, value) in [
-            ("minimum_clause_alignment_score", self.minimum_clause_alignment_score),
+            (
+                "minimum_clause_alignment_score",
+                self.minimum_clause_alignment_score,
+            ),
             ("unchanged_similarity", self.unchanged_similarity),
             ("minor_revision_similarity", self.minor_revision_similarity),
             (
@@ -243,12 +246,15 @@ pub fn compare_contracts(
     validate_analysis(previous)?;
     validate_analysis(current)?;
     let clause_changes = compare_clauses(previous, current, options)?;
-    let definition_changes = compare_definitions(&previous.definitions, &current.definitions, options);
+    let definition_changes =
+        compare_definitions(&previous.definitions, &current.definitions, options);
     let obligation_changes = compare_obligations(previous, current, options)?;
     let economic_term_changes = compare_economic_terms(previous, current, options);
     let matched_clauses = clause_changes
         .iter()
-        .filter(|change| change.previous_clause_index.is_some() && change.current_clause_index.is_some())
+        .filter(|change| {
+            change.previous_clause_index.is_some() && change.current_clause_index.is_some()
+        })
         .count();
     let added_clauses = clause_changes
         .iter()
@@ -329,10 +335,7 @@ fn compare_clauses(
     current: &ContractAnalysis,
     options: &ContractComparisonOptions,
 ) -> Result<Vec<ClauseChange>> {
-    let evaluations = previous
-        .clauses
-        .len()
-        .saturating_mul(current.clauses.len());
+    let evaluations = previous.clauses.len().saturating_mul(current.clauses.len());
     if evaluations > options.maximum_clause_pair_evaluations {
         return Err(FoError::InvalidConfig(format!(
             "contract comparison requires {evaluations} clause-pair evaluations, exceeding {}",
@@ -360,9 +363,13 @@ fn compare_clauses(
                 options,
                 &profile,
             )?;
-            let kind_bonus = if previous_kind == current_kind { 0.18 } else { 0.0 };
-            let score = (0.72 * text_similarity + 0.10 * heading_similarity + kind_bonus)
-                .clamp(0.0, 1.0);
+            let kind_bonus = if previous_kind == current_kind {
+                0.18
+            } else {
+                0.0
+            };
+            let score =
+                (0.72 * text_similarity + 0.10 * heading_similarity + kind_bonus).clamp(0.0, 1.0);
             if score >= options.minimum_clause_alignment_score {
                 pairs.push(ClausePair {
                     previous: previous_clause.index,
@@ -526,7 +533,9 @@ fn primary_kind(clause: &ContractClause) -> ClauseKind {
     clause
         .classifications
         .first()
-        .map_or(ClauseKind::Unclassified, |classification| classification.kind)
+        .map_or(ClauseKind::Unclassified, |classification| {
+            classification.kind
+        })
 }
 
 fn compare_definitions(
@@ -546,8 +555,9 @@ fn compare_definitions(
     for term in terms {
         match (previous_map.get(&term), current_map.get(&term)) {
             (Some(old), Some(new)) => {
-                let similarity = text_similarity(&old.definition, &new.definition, options, &profile)
-                    .unwrap_or(0.0);
+                let similarity =
+                    text_similarity(&old.definition, &new.definition, options, &profile)
+                        .unwrap_or(0.0);
                 let kind = if similarity >= options.unchanged_similarity {
                     DefinitionChangeKind::Unchanged
                 } else {
@@ -660,24 +670,28 @@ fn compare_obligations(
             .map_or(ClauseKind::Unclassified, primary_kind);
         let old_strength = modality_strength(old.modality);
         let new_strength = modality_strength(new.modality);
-        let kind = if pair.similarity >= options.unchanged_similarity
-            && old.modality == new.modality
-        {
-            ObligationChangeKind::Unchanged
-        } else if new_strength > old_strength {
-            ObligationChangeKind::Strengthened
-        } else if new_strength < old_strength {
-            ObligationChangeKind::Weakened
-        } else {
-            ObligationChangeKind::Changed
-        };
+        let kind =
+            if pair.similarity >= options.unchanged_similarity && old.modality == new.modality {
+                ObligationChangeKind::Unchanged
+            } else if new_strength > old_strength {
+                ObligationChangeKind::Strengthened
+            } else if new_strength < old_strength {
+                ObligationChangeKind::Weakened
+            } else {
+                ObligationChangeKind::Changed
+            };
         let direction = match kind {
             ObligationChangeKind::Strengthened => ChangeDirection::MoreRestrictive,
             ObligationChangeKind::Weakened => ChangeDirection::LessRestrictive,
             _ => ChangeDirection::Ambiguous,
         };
         let materiality = clause_materiality(clause_kind)
-            * (1.0 - pair.similarity + if old.modality != new.modality { 0.35 } else { 0.0 });
+            * (1.0 - pair.similarity
+                + if old.modality != new.modality {
+                    0.35
+                } else {
+                    0.0
+                });
         output.push(ObligationChange {
             kind,
             previous: Some(old.clone()),
@@ -784,12 +798,13 @@ fn compare_economic_terms(
             .normalized_value
             .zip(new.normalized_value)
             .map(|(old, new)| new - old);
-        let relative_delta = old
-            .normalized_value
-            .zip(new.normalized_value)
-            .and_then(|(old, new)| {
-                (old.abs() > options.economic_equality_tolerance).then_some((new - old) / old.abs())
-            });
+        let relative_delta =
+            old.normalized_value
+                .zip(new.normalized_value)
+                .and_then(|(old, new)| {
+                    (old.abs() > options.economic_equality_tolerance)
+                        .then_some((new - old) / old.abs())
+                });
         let equal = delta.is_some_and(|value| value.abs() <= options.economic_equality_tolerance)
             && old.unit == new.unit
             && old.currency == new.currency;
@@ -851,7 +866,11 @@ fn compare_economic_terms(
 
 fn economic_pair_score(left: &EconomicTerm, right: &EconomicTerm) -> f32 {
     let unit = if left.unit == right.unit { 0.20 } else { 0.0 };
-    let currency = if left.currency == right.currency { 0.10 } else { 0.0 };
+    let currency = if left.currency == right.currency {
+        0.10
+    } else {
+        0.0
+    };
     let context = word_jaccard(&left.context, &right.context);
     (0.70 * context + unit + currency).clamp(0.0, 1.0)
 }
@@ -1039,9 +1058,9 @@ fn clause_impact(kind: ClauseKind) -> InvestorImpactCategory {
         | ClauseKind::Compliance
         | ClauseKind::Representations
         | ClauseKind::Warranties => InvestorImpactCategory::ComplianceAndAudit,
-        ClauseKind::Assignment | ClauseKind::AssignmentAndSubletting | ClauseKind::ChangeOfControl => {
-            InvestorImpactCategory::AssignmentAndControl
-        }
+        ClauseKind::Assignment
+        | ClauseKind::AssignmentAndSubletting
+        | ClauseKind::ChangeOfControl => InvestorImpactCategory::AssignmentAndControl,
         ClauseKind::Premises
         | ClauseKind::PermittedUse
         | ClauseKind::Utilities
@@ -1266,12 +1285,15 @@ pub fn benchmark_contract_portfolio(
     let mut economic_distributions = Vec::new();
     let mut outliers = Vec::new();
     for (kind, observations) in economic_values {
-        let mut values = observations.iter().map(|(_, value)| *value).collect::<Vec<_>>();
+        let mut values = observations
+            .iter()
+            .map(|(_, value)| *value)
+            .collect::<Vec<_>>();
         values.sort_unstable_by(f64::total_cmp);
-        let median = median(&values);
+        let median_value = median(&values);
         let deviations = values
             .iter()
-            .map(|value| (value - median).abs())
+            .map(|value| (value - median_value).abs())
             .collect::<Vec<_>>();
         let mut deviations_sorted = deviations;
         deviations_sorted.sort_unstable_by(f64::total_cmp);
@@ -1279,9 +1301,9 @@ pub fn benchmark_contract_portfolio(
         economic_distributions.push(EconomicDistribution {
             kind,
             observations: values.len(),
-            minimum: *values.first().unwrap_or(&median),
-            median,
-            maximum: *values.last().unwrap_or(&median),
+            minimum: *values.first().unwrap_or(&median_value),
+            median: median_value,
+            maximum: *values.last().unwrap_or(&median_value),
             median_absolute_deviation: mad,
         });
         if values.len() >= options.minimum_distribution_observations {
@@ -1289,22 +1311,22 @@ pub fn benchmark_contract_portfolio(
                 let scale = if mad > 1.0e-12 {
                     mad
                 } else {
-                    median.abs().max(1.0) * 0.05
+                    median_value.abs().max(1.0) * 0.05
                 };
-                let robust_z = (value - median).abs() / scale;
+                let robust_z = (value - median_value).abs() / scale;
                 if robust_z >= options.outlier_mad_multiplier {
                     outliers.push(PortfolioOutlier {
                         document_id,
                         code: "economic_term_outlier".to_owned(),
                         description: format!(
-                            "{:?} value {value} differs from portfolio median {median}",
+                            "{:?} value {value} differs from portfolio median {median_value}",
                             kind
                         ),
                         severity: (robust_z as f32 / 8.0).clamp(0.0, 1.0),
                         clause_kind: None,
                         economic_term_kind: Some(kind),
                         observed_value: Some(value),
-                        portfolio_median: Some(median),
+                        portfolio_median: Some(median_value),
                     });
                 }
             }
@@ -1392,11 +1414,10 @@ fn median(values: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        benchmark_contract_portfolio, compare_contracts, ClauseChangeKind,
-        ContractComparisonOptions, ContractPortfolioOptions, EconomicChangeKind,
-        PortfolioDocumentAnalysis,
+        ClauseChangeKind, ContractComparisonOptions, ContractPortfolioOptions, EconomicChangeKind,
+        PortfolioDocumentAnalysis, benchmark_contract_portfolio, compare_contracts,
     };
-    use crate::{analyze_contract, ContractAnalysisOptions, ContractProfile};
+    use crate::{ContractAnalysisOptions, ContractProfile, analyze_contract};
 
     #[test]
     fn detects_material_lease_economic_and_clause_changes() {
@@ -1414,14 +1435,21 @@ mod tests {
         .expect("new");
         let comparison = compare_contracts(&old, &new, &ContractComparisonOptions::default())
             .expect("comparison");
-        assert!(comparison
-            .clause_changes
-            .iter()
-            .any(|change| change.kind == ClauseChangeKind::Added));
-        assert!(comparison
-            .economic_term_changes
-            .iter()
-            .any(|change| matches!(change.kind, EconomicChangeKind::Increased | EconomicChangeKind::Added)));
+        assert!(
+            comparison
+                .clause_changes
+                .iter()
+                .any(|change| change.kind == ClauseChangeKind::Added)
+        );
+        assert!(
+            comparison
+                .economic_term_changes
+                .iter()
+                .any(|change| matches!(
+                    change.kind,
+                    EconomicChangeKind::Increased | EconomicChangeKind::Added
+                ))
+        );
         assert!(!comparison.alerts.is_empty());
     }
 
@@ -1445,15 +1473,15 @@ mod tests {
             .expect("analysis"),
         })
         .collect::<Vec<_>>();
-        let benchmark = benchmark_contract_portfolio(
-            &analyses,
-            &ContractPortfolioOptions::default(),
-        )
-        .expect("benchmark");
+        let benchmark =
+            benchmark_contract_portfolio(&analyses, &ContractPortfolioOptions::default())
+                .expect("benchmark");
         assert_eq!(benchmark.documents, 5);
-        assert!(benchmark
-            .outliers
-            .iter()
-            .any(|outlier| outlier.document_id == "e"));
+        assert!(
+            benchmark
+                .outliers
+                .iter()
+                .any(|outlier| outlier.document_id == "e")
+        );
     }
 }

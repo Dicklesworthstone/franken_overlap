@@ -71,8 +71,7 @@ fn compares_exhaustive_and_indexed_retrieval_end_to_end() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let report: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse report");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse report");
     assert_eq!(report["indexed_documents"], 2);
     assert_eq!(report["queries"], 1);
     assert_eq!(report["exhaustive_coverage"]["complete"], true);

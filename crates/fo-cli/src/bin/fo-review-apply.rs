@@ -10,10 +10,10 @@ use clap::Parser;
 use fo_core::{
     CompositeMatchBlock, CompositeSearchResult, FeedbackExample, GroupedFeedbackExample,
     HybridOverlapEvidence, HybridSearchReport, LineageEvidence, LineageGraph, LineageNode,
-    LineageRelation, ReviewDecisionKind, ReviewDecisionRecord, SearchResult,
-    SemanticFusionReport, validate_review_decisions,
+    LineageRelation, ReviewDecisionKind, ReviewDecisionRecord, SearchResult, SemanticFusionReport,
+    validate_review_decisions,
 };
-use fo_corpus::{atomic_write, sha256_hex, unix_timestamp};
+use fo_corpus::{sha256_hex, unix_timestamp};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -167,15 +167,17 @@ fn run() -> CliResult<()> {
     };
     let mut lineage_nodes_changed = 0usize;
     if let Some(graph) = graph.as_mut() {
-        lineage_nodes_changed += usize::from(graph.upsert_node(LineageNode {
-            id: target_id.clone(),
-            title: command
-                .target_title
-                .clone()
-                .unwrap_or_else(|| target_id.clone()),
-            observed_at_unix: command.target_observed_at_unix,
-            metadata: target_metadata,
-        })?);
+        lineage_nodes_changed += usize::from(
+            graph.upsert_node(LineageNode {
+                id: target_id.clone(),
+                title: command
+                    .target_title
+                    .clone()
+                    .unwrap_or_else(|| target_id.clone()),
+                observed_at_unix: command.target_observed_at_unix,
+                metadata: target_metadata,
+            })?,
+        );
     }
 
     let mut accepted = 0usize;
@@ -214,7 +216,7 @@ fn run() -> CliResult<()> {
         let feedback_weight = if selected_results.is_empty() {
             1.0
         } else {
-            1.0 / selected_results.len() as f32
+            1.0 / selected_results.len() as f64
         };
         let ranking_before = ranking_feedback.len();
         let calibration_before = calibration_feedback.len();
@@ -255,10 +257,8 @@ fn run() -> CliResult<()> {
                         && result.query_coverage >= command.minimum_lineage_query_coverage
                         && result.matched_tokens >= command.minimum_lineage_matched_tokens
                 }) {
-                    let mut lineage_evidence = LineageEvidence::from_search_result(
-                        result,
-                        decision.reviewed_at_unix,
-                    );
+                    let mut lineage_evidence =
+                        LineageEvidence::from_search_result(result, decision.reviewed_at_unix);
                     lineage_evidence
                         .metadata
                         .insert("reviewer".to_owned(), decision.reviewer.clone());
@@ -278,11 +278,7 @@ fn run() -> CliResult<()> {
             }
         }
         lineage_edges_changed += changed_for_decision;
-        let application_id = application_id(
-            &results_sha256,
-            &decisions_sha256,
-            &decision,
-        );
+        let application_id = application_id(&results_sha256, &decisions_sha256, &decision);
         ledger.push(AppliedDecision {
             schema_version: APPLICATION_SCHEMA_VERSION,
             application_id,
@@ -311,11 +307,7 @@ fn run() -> CliResult<()> {
         &calibration_feedback,
         command.dry_run,
     )?;
-    let ledger_added = merge_ledger(
-        command.decision_ledger.as_deref(),
-        &ledger,
-        command.dry_run,
-    )?;
+    let ledger_added = merge_ledger(command.decision_ledger.as_deref(), &ledger, command.dry_run)?;
     if !command.dry_run {
         if let (Some(path), Some(graph)) = (command.lineage.as_deref(), graph.as_ref()) {
             atomic_write(path, &serde_json::to_vec_pretty(graph)?)?;
@@ -348,8 +340,14 @@ fn run() -> CliResult<()> {
     } else {
         println!("Target:                       {}", report.target_id);
         println!("Decisions:                    {}", report.decisions);
-        println!("Accept / reject:              {} / {}", report.accepted, report.rejected);
-        println!("Uncertain / unreviewed:       {} / {}", report.uncertain, report.unreviewed);
+        println!(
+            "Accept / reject:              {} / {}",
+            report.accepted, report.rejected
+        );
+        println!(
+            "Uncertain / unreviewed:       {} / {}",
+            report.uncertain, report.unreviewed
+        );
         println!("Corrected source:             {}", report.corrected_source);
         println!(
             "Accepts without text evidence:{}",
@@ -363,8 +361,14 @@ fn run() -> CliResult<()> {
             "Calibration feedback added:    {}",
             report.calibration_feedback_records_added
         );
-        println!("Lineage nodes / edges changed:{} / {}", lineage_nodes_changed, lineage_edges_changed);
-        println!("Decision ledger added:        {}", report.decision_ledger_records_added);
+        println!(
+            "Lineage nodes / edges changed:{} / {}",
+            lineage_nodes_changed, lineage_edges_changed
+        );
+        println!(
+            "Decision ledger added:        {}",
+            report.decision_ledger_records_added
+        );
         println!("Dry run:                      {}", report.dry_run);
     }
     Ok(())
@@ -392,9 +396,7 @@ fn validate_command(command: &Cli) -> CliResult<()> {
         }
     }
     if command.minimum_lineage_matched_tokens == 0 {
-        return Err(invalid(
-            "minimum_lineage_matched_tokens must be positive",
-        ));
+        return Err(invalid("minimum_lineage_matched_tokens must be positive"));
     }
     Ok(())
 }
@@ -519,7 +521,7 @@ fn block_result(composite: &CompositeSearchResult, block: &CompositeMatchBlock) 
         query_end: block.query_end,
         edit_distance: block.edit_distance,
         edit_similarity: block.edit_similarity,
-        anchor_coverage: (composite.anchor_coverage * block_fraction).clamp(0.0, 1.0),
+        anchor_coverage: 0.0,
         query_coverage: (composite.query_coverage * block_fraction).clamp(0.0, 1.0),
         source_coverage: (composite.source_coverage * block_fraction).clamp(0.0, 1.0),
         anchor_score: block.raw_score,
@@ -671,9 +673,11 @@ fn read_jsonl<T: DeserializeOwned>(path: &Path) -> CliResult<Vec<T>> {
         if value.is_empty() || value.starts_with('#') {
             continue;
         }
-        output.push(serde_json::from_str(value).map_err(|error| {
-            invalid(format!("{}:{}: {error}", path.display(), line_index + 1))
-        })?);
+        output.push(
+            serde_json::from_str(value).map_err(|error| {
+                invalid(format!("{}:{}: {error}", path.display(), line_index + 1))
+            })?,
+        );
     }
     Ok(output)
 }
@@ -739,7 +743,9 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> CliResult<()> {
     }
     let temporary = path.with_extension(format!(
         "{}.tmp-{}",
-        path.extension().and_then(|value| value.to_str()).unwrap_or("json"),
+        path.extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("json"),
         std::process::id()
     ));
     fs::write(&temporary, bytes)?;

@@ -5,8 +5,8 @@ use std::path::{Component, Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    atomic_write, sha256_hex, unix_timestamp, CorpusDocument, CorpusError, CorpusManifest,
-    CorpusProvider, Result,
+    CorpusDocument, CorpusError, CorpusManifest, CorpusProvider, Result, atomic_write, sha256_hex,
+    unix_timestamp,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,10 +120,9 @@ pub fn section_corpus(
         ),
         parent.provider,
     );
-    manifest.source_snapshot.insert(
-        "parent_corpus_id".to_owned(),
-        parent.corpus_id.clone(),
-    );
+    manifest
+        .source_snapshot
+        .insert("parent_corpus_id".to_owned(), parent.corpus_id.clone());
     manifest.source_snapshot.insert(
         "parent_manifest_sha256".to_owned(),
         sha256_hex(&serde_json::to_vec(&parent)?),
@@ -138,7 +137,9 @@ pub fn section_corpus(
         ("maximum_characters", options.maximum_characters),
         ("overlap_characters", options.overlap_characters),
     ] {
-        manifest.source_snapshot.insert(key.to_owned(), value.to_string());
+        manifest
+            .source_snapshot
+            .insert(key.to_owned(), value.to_string());
     }
 
     let mut heading_sections = 0usize;
@@ -181,7 +182,9 @@ pub fn section_corpus(
             let Some(raw) = source.get(span.start..span.end) else {
                 continue;
             };
-            let leading = raw.find(|character: char| !character.is_whitespace()).unwrap_or(0);
+            let leading = raw
+                .find(|character: char| !character.is_whitespace())
+                .unwrap_or(0);
             let trailing = raw.trim_end().len();
             if leading >= trailing {
                 continue;
@@ -381,8 +384,7 @@ fn paragraph_windows(
         if end >= source.len() {
             break;
         }
-        start = retreat_chars(source, end, options.overlap_characters)
-            .max(start.saturating_add(1));
+        start = retreat_chars(source, end, options.overlap_characters).max(start.saturating_add(1));
         while start < source.len() && !source.is_char_boundary(start) {
             start += 1;
         }
@@ -443,7 +445,9 @@ fn choose_paragraph_boundary(source: &str, target: usize, maximum: usize) -> usi
     if let Some(relative) = source[target..maximum].find("\n\n") {
         return target + relative + 2;
     }
-    source[..target].rfind("\n\n").map_or(target, |offset| offset + 2)
+    source[..target]
+        .rfind("\n\n")
+        .map_or(target, |offset| offset + 2)
 }
 
 fn byte_offset_for_chars(source: &str, start: usize, characters: usize) -> usize {
@@ -533,7 +537,7 @@ fn validate_relative_path(value: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{gutenberg_heading, paragraph_windows, sec_heading, SectionCorpusOptions};
+    use super::{SectionCorpusOptions, gutenberg_heading, paragraph_windows, sec_heading};
 
     #[test]
     fn recognizes_book_and_filing_headings() {

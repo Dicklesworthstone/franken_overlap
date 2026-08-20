@@ -7,9 +7,9 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use fo_core::{
-    analyze_contract, ClauseKind, ContractAnalysis, ContractAnalysisOptions, ContractProfile,
+    ClauseKind, ContractAnalysis, ContractAnalysisOptions, ContractProfile, analyze_contract,
 };
-use fo_corpus::{atomic_write, verify_collection, CollectionManifest};
+use fo_corpus::{CollectionManifest, atomic_write, verify_collection};
 use rayon::prelude::*;
 use serde::Serialize;
 
@@ -199,7 +199,9 @@ fn run_collection(command: CollectionCommand) -> CliResult<()> {
         .cloned()
         .collect::<Vec<_>>();
     if documents.is_empty() {
-        return Err(invalid("no collection documents matched the requested scope"));
+        return Err(invalid(
+            "no collection documents matched the requested scope",
+        ));
     }
     if command.output.exists() {
         return Err(invalid(format!(
@@ -217,7 +219,8 @@ fn run_collection(command: CollectionCommand) -> CliResult<()> {
                 let result = fs::read_to_string(&source_path)
                     .map_err(|error| error.to_string())
                     .and_then(|text| {
-                        analyze_contract(&text, profile, &options).map_err(|error| error.to_string())
+                        analyze_contract(&text, profile, &options)
+                            .map_err(|error| error.to_string())
                     });
                 (document, result)
             })
@@ -353,14 +356,12 @@ fn print_analysis(path: &Path, analysis: &ContractAnalysis) {
         let primary = clause
             .classifications
             .first()
-            .map_or(ClauseKind::Unclassified, |classification| classification.kind);
+            .map_or(ClauseKind::Unclassified, |classification| {
+                classification.kind
+            });
         println!(
             "  {:>4} {:?} [{:>8}..{:>8}] {}",
-            clause.index,
-            primary,
-            clause.start_byte,
-            clause.end_byte,
-            clause.heading,
+            clause.index, primary, clause.start_byte, clause.end_byte, clause.heading,
         );
     }
 }

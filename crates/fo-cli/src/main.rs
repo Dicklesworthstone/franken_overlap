@@ -456,9 +456,7 @@ fn run_inspect(command: InspectCommand) -> CliResult<()> {
         );
         println!(
             "q={} w={} normalization={:?}",
-            report.config.qgram_size,
-            report.config.winnow_window,
-            report.config.normalization
+            report.config.qgram_size, report.config.winnow_window, report.config.normalization
         );
         for document in &report.documents {
             println!(

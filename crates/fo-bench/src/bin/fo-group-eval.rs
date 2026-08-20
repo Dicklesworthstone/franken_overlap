@@ -8,8 +8,7 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use fo_core::{
     EvaluationOptions, GroupedEvaluationOptions, GroupedEvaluationReport, GroupedLabeledScore,
-    PrecisionRecallPoint, ThresholdConstraints, grouped_evaluation_report,
-    select_operating_point,
+    PrecisionRecallPoint, ThresholdConstraints, grouped_evaluation_report, select_operating_point,
 };
 use serde::Serialize;
 
@@ -89,8 +88,7 @@ fn run() -> CliResult<()> {
             ThresholdConstraints {
                 minimum_precision: command.minimum_precision.unwrap_or(0.0),
                 minimum_recall: command.minimum_recall.unwrap_or(0.0),
-                maximum_false_positives_per_query: command
-                    .maximum_false_positives_per_query,
+                maximum_false_positives_per_query: command.maximum_false_positives_per_query,
             },
         )?)
     } else {
@@ -144,7 +142,10 @@ fn print_output(output: &Output) {
         report.queries_with_positives
     );
     println!("Examples:                   {}", report.examples);
-    println!("Micro AUPRC:                {:.6}", report.micro.average_precision);
+    println!(
+        "Micro AUPRC:                {:.6}",
+        report.micro.average_precision
+    );
     println!(
         "Macro query AUPRC:          {:.6}",
         report.macro_average_precision
@@ -154,10 +155,16 @@ fn print_output(output: &Output) {
         report.mean_reciprocal_rank
     );
     for metric in &report.recall_at_k {
-        println!("Recall@{:<3}                  {:.6}", metric.k, metric.value);
+        println!(
+            "Recall@{:<3}                  {:.6}",
+            metric.k, metric.value
+        );
     }
     for metric in &report.ndcg_at_k {
-        println!("nDCG@{:<3}                    {:.6}", metric.k, metric.value);
+        println!(
+            "nDCG@{:<3}                    {:.6}",
+            metric.k, metric.value
+        );
     }
     if let Some(interval) = report.micro_average_precision_interval {
         println!(

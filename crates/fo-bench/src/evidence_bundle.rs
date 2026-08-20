@@ -394,6 +394,7 @@ pub struct BundleReport {
     pub examples: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_evidence_bundle(
     corpus_root: &Path,
     query_path: &Path,
@@ -458,7 +459,10 @@ pub fn render_evidence_bundle(
     atomic_write(&examples_path, &serde_json::to_vec_pretty(&examples)?)?;
 
     let mut inputs = vec![
-        receipt("corpus_manifest", &corpus_root.join(fo_corpus::MANIFEST_FILENAME))?,
+        receipt(
+            "corpus_manifest",
+            &corpus_root.join(fo_corpus::MANIFEST_FILENAME),
+        )?,
         receipt("queries", query_path)?,
         receipt("proof_report", proof_report_path)?,
         receipt("pair_scores", score_path)?,
@@ -485,7 +489,10 @@ pub fn render_evidence_bundle(
         artifacts,
     };
     let manifest_path = output_directory.join(MANIFEST_JSON);
-    atomic_write(&manifest_path, &serde_json::to_vec_pretty(&bundle_manifest)?)?;
+    atomic_write(
+        &manifest_path,
+        &serde_json::to_vec_pretty(&bundle_manifest)?,
+    )?;
     Ok(BundleReport {
         output_directory: output_directory.display().to_string(),
         results_markdown: markdown_path.display().to_string(),
@@ -517,9 +524,9 @@ fn build_examples(
         .collect::<BTreeMap<_, _>>();
     let mut by_profile = BTreeMap::<String, Vec<QuerySelection>>::new();
     for (query_id, query_rows) in &grouped_rows {
-        let query = query_map.get(query_id.as_str()).ok_or_else(|| {
-            invalid(format!("score rows reference missing query {query_id:?}"))
-        })?;
+        let query = query_map
+            .get(query_id.as_str())
+            .ok_or_else(|| invalid(format!("score rows reference missing query {query_id:?}")))?;
         let hybrid_rank = positive_rank(query_rows, METHOD_HYBRID, &query.positive_ids);
         let baseline_rank = BASELINE_METHODS
             .iter()
@@ -560,7 +567,10 @@ fn build_examples(
                     .total_cmp(&right.advantage.unwrap_or(f64::INFINITY))
                     .then_with(|| left.query_id.cmp(&right.query_id))
             }) {
-                selected.push((worst.query_id.clone(), "largest_hybrid_rank_loss".to_owned()));
+                selected.push((
+                    worst.query_id.clone(),
+                    "largest_hybrid_rank_loss".to_owned(),
+                ));
             }
         }
         selected.sort_unstable();
@@ -585,7 +595,10 @@ fn build_examples(
         let query = query_map[query_id.as_str()];
         let query_rows = grouped_rows[query_id.as_str()].as_slice();
         let source_document = document_map.get(query.source_id.as_str()).ok_or_else(|| {
-            invalid(format!("source {} is absent from corpus manifest", query.source_id))
+            invalid(format!(
+                "source {} is absent from corpus manifest",
+                query.source_id
+            ))
         })?;
         let source_row = query_rows
             .iter()
@@ -621,12 +634,7 @@ fn build_examples(
                     .copied();
                 let snippet = span
                     .map(|span| {
-                        document_snippet(
-                            corpus_root,
-                            document,
-                            Some(span),
-                            options.snippet_tokens,
-                        )
+                        document_snippet(corpus_root, document, Some(span), options.snippet_tokens)
                     })
                     .transpose()?;
                 top_candidates.push(CandidateExample {
@@ -699,7 +707,10 @@ fn positive_rank(
     method: &str,
     positive_ids: &[String],
 ) -> Option<RankInterval> {
-    let positive_set = positive_ids.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    let positive_set = positive_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
     let mut ranked = rows.to_vec();
     ranked.sort_unstable_by(|left, right| {
         score_for(right, method)
@@ -807,13 +818,28 @@ fn render_markdown(
             output.push_str(&format!(
                 "| `{}` | {} | {} | {} | {} | {:.3} ms | {:.2} | {} |\n",
                 method.name,
-                quality.map_or_else(|| "n/a".to_owned(), |value| format!("{:.4}", value.micro.average_precision)),
-                quality.map_or_else(|| "n/a".to_owned(), |value| format!("{:.4}", value.macro_average_precision)),
-                quality.map_or_else(|| "n/a".to_owned(), |value| format!("{:.4}", metric_at(&value.recall_at_k, 1))),
-                quality.map_or_else(|| "n/a".to_owned(), |value| format!("{:.4}", value.mean_reciprocal_rank)),
+                quality.map_or_else(
+                    || "n/a".to_owned(),
+                    |value| format!("{:.4}", value.micro.average_precision)
+                ),
+                quality.map_or_else(
+                    || "n/a".to_owned(),
+                    |value| format!("{:.4}", value.macro_average_precision)
+                ),
+                quality.map_or_else(
+                    || "n/a".to_owned(),
+                    |value| format!("{:.4}", metric_at(&value.recall_at_k, 1))
+                ),
+                quality.map_or_else(
+                    || "n/a".to_owned(),
+                    |value| format!("{:.4}", value.mean_reciprocal_rank)
+                ),
                 method.timing.repeat_p95_ms,
                 method.timing.operations_per_second,
-                method.span.as_ref().map_or_else(|| "n/a".to_owned(), |span| format!("{:.4}", span.mean_iou))
+                method
+                    .span
+                    .as_ref()
+                    .map_or_else(|| "n/a".to_owned(), |span| format!("{:.4}", span.mean_iou))
             ));
         }
         output.push('\n');
@@ -844,7 +870,8 @@ fn render_markdown(
     }
     output.push_str("## Predeclared claim verdicts\n\n");
     match claims {
-        None => output.push_str("No claim report was supplied. No superiority claim is established.\n\n"),
+        None => output
+            .push_str("No claim report was supplied. No superiority claim is established.\n\n"),
         Some(claims) => {
             output.push_str(&format!(
                 "Nominal confidence {:.4}; family-wise confidence {:.4}; all comparisons supported: **{}**.\n\n",
@@ -915,7 +942,10 @@ fn render_markdown(
         output.push_str("**Query**\n\n");
         output.push_str(&format!("> {}\n\n", markdown_quote(&example.query_text)));
         output.push_str("**Source passage**\n\n");
-        output.push_str(&format!("> {}\n\n", markdown_quote(&example.source_snippet)));
+        output.push_str(&format!(
+            "> {}\n\n",
+            markdown_quote(&example.source_snippet)
+        ));
         output.push_str("| Method | Positive rank interval | Top candidate | Score |\n");
         output.push_str("|---|---:|---|---:|\n");
         for method in &example.methods {
@@ -923,9 +953,21 @@ fn render_markdown(
             output.push_str(&format!(
                 "| `{}` | {} | {} | {} |\n",
                 method.method,
-                method.positive_rank.as_ref().map_or_else(|| "n/a".to_owned(), |rank| format!("{}–{}", rank.best_rank, rank.worst_rank)),
-                leader.map_or_else(|| "n/a".to_owned(), |candidate| format!("`{}` {}", candidate.candidate_id, candidate.candidate_title)),
-                leader.map_or_else(|| "n/a".to_owned(), |candidate| format!("{:.4}", candidate.score))
+                method.positive_rank.as_ref().map_or_else(
+                    || "n/a".to_owned(),
+                    |rank| format!("{}–{}", rank.best_rank, rank.worst_rank)
+                ),
+                leader.map_or_else(
+                    || "n/a".to_owned(),
+                    |candidate| format!(
+                        "`{}` {}",
+                        candidate.candidate_id, candidate.candidate_title
+                    )
+                ),
+                leader.map_or_else(
+                    || "n/a".to_owned(),
+                    |candidate| format!("{:.4}", candidate.score)
+                )
             ));
         }
         output.push('\n');
@@ -989,7 +1031,8 @@ fn render_html(
     }
     body.push_str("</section><section><h2>Predeclared claim verdicts</h2>");
     match claims {
-        None => body.push_str("<p>No claim report was supplied. No superiority claim is established.</p>"),
+        None => body
+            .push_str("<p>No claim report was supplied. No superiority claim is established.</p>"),
         Some(claims) => {
             body.push_str(&format!(
                 "<p>Nominal confidence {:.4}; family-wise confidence {:.4}; all supported: <strong>{}</strong>.</p>",
@@ -1061,9 +1104,22 @@ fn render_html(
             body.push_str(&format!(
                 "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td></tr>",
                 html_escape(&method.method),
-                method.positive_rank.as_ref().map_or_else(|| "n/a".to_owned(), |rank| format!("{}–{}", rank.best_rank, rank.worst_rank)),
-                leader.map_or_else(|| "n/a".to_owned(), |candidate| format!("<code>{}</code> {}", html_escape(&candidate.candidate_id), html_escape(&candidate.candidate_title))),
-                leader.map_or_else(|| "n/a".to_owned(), |candidate| format!("{:.4}", candidate.score))
+                method.positive_rank.as_ref().map_or_else(
+                    || "n/a".to_owned(),
+                    |rank| format!("{}–{}", rank.best_rank, rank.worst_rank)
+                ),
+                leader.map_or_else(
+                    || "n/a".to_owned(),
+                    |candidate| format!(
+                        "<code>{}</code> {}",
+                        html_escape(&candidate.candidate_id),
+                        html_escape(&candidate.candidate_title)
+                    )
+                ),
+                leader.map_or_else(
+                    || "n/a".to_owned(),
+                    |candidate| format!("{:.4}", candidate.score)
+                )
             ));
         }
         body.push_str("</tbody></table></div></article>");
@@ -1168,8 +1224,7 @@ fn memory_bytes() -> Option<u64> {
             return kib.checked_mul(1024);
         }
     }
-    command_output("sysctl", &["-n", "hw.memsize"])
-        .and_then(|value| value.parse::<u64>().ok())
+    command_output("sysctl", &["-n", "hw.memsize"]).and_then(|value| value.parse::<u64>().ok())
 }
 
 fn command_output(command: &str, arguments: &[&str]) -> Option<String> {

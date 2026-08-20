@@ -74,7 +74,9 @@ impl ActiveLearningOptions {
             self.hard_negative_weight,
             self.novelty_weight,
         ];
-        if weights.iter().any(|weight| !weight.is_finite() || *weight < 0.0)
+        if weights
+            .iter()
+            .any(|weight| !weight.is_finite() || *weight < 0.0)
             || weights.iter().sum::<f64>() <= 0.0
         {
             return Err(FoError::InvalidConfig(
@@ -115,7 +117,8 @@ pub fn select_active_learning_queue(
     if candidates.len() > options.maximum_input_candidates {
         return Err(FoError::InvalidConfig(format!(
             "active-learning input has {} candidates; limit is {}",
-            candidates.len(), options.maximum_input_candidates
+            candidates.len(),
+            options.maximum_input_candidates
         )));
     }
     let mut prepared = Vec::with_capacity(candidates.len());
@@ -165,17 +168,19 @@ pub fn select_active_learning_queue(
             if priority < options.minimum_priority {
                 continue;
             }
-            let replace = best.as_ref().is_none_or(|(best_index, best_priority, best_novelty)| {
-                priority.total_cmp(best_priority).is_gt()
-                    || (priority.total_cmp(best_priority).is_eq()
-                        && (novelty.total_cmp(best_novelty).is_gt()
-                            || (novelty.total_cmp(best_novelty).is_eq()
-                                && deterministic_order(
-                                    &candidate.original,
-                                    &prepared[*best_index].original,
-                                )
-                                .is_lt())))
-            });
+            let replace = best
+                .as_ref()
+                .is_none_or(|(best_index, best_priority, best_novelty)| {
+                    priority.total_cmp(best_priority).is_gt()
+                        || (priority.total_cmp(best_priority).is_eq()
+                            && (novelty.total_cmp(best_novelty).is_gt()
+                                || (novelty.total_cmp(best_novelty).is_eq()
+                                    && deterministic_order(
+                                        &candidate.original,
+                                        &prepared[*best_index].original,
+                                    )
+                                    .is_lt())))
+                });
             if replace {
                 best = Some((index, priority, novelty));
             }
@@ -221,8 +226,7 @@ fn prepare_candidate(
         .max((ranking - raw).abs())
         .max((probability - ranking).abs())
         .clamp(0.0, 1.0);
-    let false_match_confidence =
-        1.0 / (1.0 + candidate.result.estimated_false_matches.max(0.0));
+    let false_match_confidence = 1.0 / (1.0 + candidate.result.estimated_false_matches.max(0.0));
     let support = (0.28 * f64::from(candidate.result.query_coverage.clamp(0.0, 1.0))
         + 0.22 * f64::from(candidate.result.anchor_coverage.clamp(0.0, 1.0))
         + 0.18 * f64::from(candidate.result.vote_support.clamp(0.0, 1.0))
@@ -232,9 +236,8 @@ fn prepare_candidate(
     let model_rejection = (1.0 - probability).clamp(0.0, 1.0);
     let hard_negative_risk =
         (raw * (0.60 * (1.0 - support) + 0.40 * model_rejection)).clamp(0.0, 1.0);
-    let base_weight = options.uncertainty_weight
-        + options.disagreement_weight
-        + options.hard_negative_weight;
+    let base_weight =
+        options.uncertainty_weight + options.disagreement_weight + options.hard_negative_weight;
     let base_priority = if base_weight > 0.0 {
         (options.uncertainty_weight * uncertainty
             + options.disagreement_weight * disagreement
@@ -258,9 +261,8 @@ fn combine_priority(
     novelty: f64,
     options: ActiveLearningOptions,
 ) -> f64 {
-    let base_weight = options.uncertainty_weight
-        + options.disagreement_weight
-        + options.hard_negative_weight;
+    let base_weight =
+        options.uncertainty_weight + options.disagreement_weight + options.hard_negative_weight;
     let total_weight = base_weight + options.novelty_weight;
     if total_weight <= 0.0 {
         return 0.0;
@@ -292,7 +294,9 @@ fn normalized_distance(
         .zip(right)
         .map(|(left, right)| (*left - *right).powi(2))
         .sum::<f64>();
-    (squared / RANKING_FEATURE_COUNT as f64).sqrt().clamp(0.0, 1.0)
+    (squared / RANKING_FEATURE_COUNT as f64)
+        .sqrt()
+        .clamp(0.0, 1.0)
 }
 
 fn validate_candidate(candidate: &ActiveLearningCandidate, index: usize) -> Result<()> {
@@ -335,9 +339,7 @@ fn deterministic_order(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ActiveLearningCandidate, ActiveLearningOptions, select_active_learning_queue,
-    };
+    use super::{ActiveLearningCandidate, ActiveLearningOptions, select_active_learning_queue};
     use crate::{SearchIntent, SearchResult};
 
     fn result(document_id: u32, raw: f32, coverage: f32, chain: f32) -> SearchResult {
@@ -436,11 +438,8 @@ mod tests {
     fn skips_already_labeled_examples_by_default() {
         let mut labeled = candidate("q1", 1, 0.8, 0.5, 0.4, 0.4);
         labeled.label = Some(false);
-        let selected = select_active_learning_queue(
-            &[labeled],
-            ActiveLearningOptions::default(),
-        )
-        .expect("queue");
+        let selected = select_active_learning_queue(&[labeled], ActiveLearningOptions::default())
+            .expect("queue");
         assert!(selected.is_empty());
     }
 }

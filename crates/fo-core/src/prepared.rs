@@ -59,7 +59,10 @@ impl PreparedOverlapQuery {
         let mut observed_occurrences = 0usize;
         for feature in &self.features {
             if feature.positions.is_empty()
-                || feature.positions.windows(2).any(|window| window[0] >= window[1])
+                || feature
+                    .positions
+                    .windows(2)
+                    .any(|window| window[0] >= window[1])
                 || previous.is_some_and(|value| value >= feature.fingerprint)
                 || !feature.idf.is_finite()
                 || feature.idf < 0.0
@@ -217,8 +220,7 @@ impl Index {
             };
             matching_feature_occurrences =
                 matching_feature_occurrences.saturating_add(positions.len());
-            let idf = ((document_count as f32 + 1.0)
-                / (entry.document_frequency as f32 + 1.0))
+            let idf = ((document_count as f32 + 1.0) / (entry.document_frequency as f32 + 1.0))
                 .ln()
                 + 1.0;
             features.push(PreparedQueryFeature {
@@ -259,8 +261,7 @@ impl Index {
 
         let mut ordered_features = prepared.features.iter().collect::<Vec<_>>();
         ordered_features.sort_unstable_by(|left, right| {
-            left
-                .posting_count
+            left.posting_count
                 .saturating_mul(left.positions.len())
                 .cmp(&right.posting_count.saturating_mul(right.positions.len()))
                 .then_with(|| left.posting_count.cmp(&right.posting_count))
@@ -282,7 +283,8 @@ impl Index {
                 continue;
             }
             let feature_pairs = saturating_pairs(feature.posting_count, feature.positions.len());
-            if posting_pairs.saturating_add(feature_pairs) > document_options.maximum_posting_pairs {
+            if posting_pairs.saturating_add(feature_pairs) > document_options.maximum_posting_pairs
+            {
                 suppressed_features_by_work_budget += 1;
                 continue;
             }
@@ -316,13 +318,14 @@ impl Index {
                 value.distinct_features >= document_options.minimum_distinct_features
             })
             .filter_map(|(document_id, value)| {
-                self.document(document_id).map(|document| DocumentCandidate {
-                    document_id,
-                    path: document.path.clone(),
-                    score: value.score.min(f64::from(f32::MAX)) as f32,
-                    distinct_features: value.distinct_features,
-                    matched_query_feature_occurrences: value.matched_occurrences,
-                })
+                self.document(document_id)
+                    .map(|document| DocumentCandidate {
+                        document_id,
+                        path: document.path.clone(),
+                        score: value.score.min(f64::from(f32::MAX)) as f32,
+                        distinct_features: value.distinct_features,
+                        matched_query_feature_occurrences: value.matched_occurrences,
+                    })
             })
             .collect::<Vec<_>>();
         candidates.sort_unstable_by(|left, right| {
@@ -330,7 +333,11 @@ impl Index {
                 .score
                 .total_cmp(&left.score)
                 .then_with(|| right.distinct_features.cmp(&left.distinct_features))
-                .then_with(|| right.matched_query_feature_occurrences.cmp(&left.matched_query_feature_occurrences))
+                .then_with(|| {
+                    right
+                        .matched_query_feature_occurrences
+                        .cmp(&left.matched_query_feature_occurrences)
+                })
                 .then_with(|| left.document_id.cmp(&right.document_id))
         });
         let best_score = candidates.first().map_or(0.0, |candidate| candidate.score);
@@ -463,9 +470,7 @@ fn projected_index(
             };
             if previous_document != Some(local_id) {
                 document_frequency = document_frequency.checked_add(1).ok_or_else(|| {
-                    FoError::InvalidIndex(
-                        "projected document frequency exceeds u32".to_owned(),
-                    )
+                    FoError::InvalidIndex("projected document frequency exceeds u32".to_owned())
                 })?;
                 previous_document = Some(local_id);
             }
@@ -560,8 +565,8 @@ fn saturating_pairs(left: usize, right: usize) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        DocumentFirstOptions, DocumentFirstStatus, PreparedOverlapQuery,
-        PREPARED_QUERY_SCHEMA_VERSION,
+        DocumentFirstOptions, DocumentFirstStatus, PREPARED_QUERY_SCHEMA_VERSION,
+        PreparedOverlapQuery,
     };
     use crate::{IndexBuilder, IndexConfig, SearchOptions};
 
@@ -578,7 +583,7 @@ mod tests {
                 )
             };
             builder
-                .add_document(format!("document-{index}"), body)
+                .add_document(format!("document-{index}"), &body)
                 .expect("document");
         }
         let index = builder.build().expect("index");

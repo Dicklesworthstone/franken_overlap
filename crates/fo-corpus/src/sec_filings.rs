@@ -6,18 +6,18 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    atomic_write, sha256_hex, unix_timestamp, CorpusDocument, CorpusError, CorpusFailure,
-    CorpusManifest, CorpusProvider, DownloadClient, HttpOptions, Result, SEC_ARCHIVES_BASE,
-    SEC_SUBMISSIONS_BASE, SEC_TICKERS_URL,
+    CorpusDocument, CorpusError, CorpusFailure, CorpusManifest, CorpusProvider, DownloadClient,
+    HttpOptions, Result, SEC_ARCHIVES_BASE, SEC_SUBMISSIONS_BASE, SEC_TICKERS_URL, atomic_write,
+    sha256_hex, unix_timestamp,
 };
 
 pub const INVESTOR_CORE_FORMS: &[&str] = &[
-    "10-K", "10-K/A", "10-Q", "10-Q/A", "8-K", "8-K/A", "DEF 14A", "20-F",
-    "20-F/A", "6-K", "40-F", "40-F/A",
+    "10-K", "10-K/A", "10-Q", "10-Q/A", "8-K", "8-K/A", "DEF 14A", "20-F", "20-F/A", "6-K", "40-F",
+    "40-F/A",
 ];
 pub const REGISTRATION_FORMS: &[&str] = &[
-    "S-1", "S-1/A", "S-3", "S-3/A", "F-1", "F-1/A", "F-3", "F-3/A", "424B1",
-    "424B2", "424B3", "424B4", "424B5", "424B7", "424B8",
+    "S-1", "S-1/A", "S-3", "S-3/A", "F-1", "F-1/A", "F-3", "F-3/A", "424B1", "424B2", "424B3",
+    "424B4", "424B5", "424B7", "424B8",
 ];
 pub const COMMENT_LETTER_FORMS: &[&str] = &["UPLOAD", "CORRESP"];
 
@@ -66,7 +66,10 @@ impl Default for SecFilingsOptions {
             ciks: Vec::new(),
             sampled_companies: None,
             seed: 0x73_65_63_2d_66_69_6c_65,
-            forms: INVESTOR_CORE_FORMS.iter().map(|value| (*value).to_owned()).collect(),
+            forms: INVESTOR_CORE_FORMS
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
             filings_per_company: 40,
             from_date: Some("2018-01-01".to_owned()),
             to_date: None,
@@ -113,7 +116,11 @@ impl SecFilingsOptions {
                 "sampled company count must lie in 1..=100000".to_owned(),
             ));
         }
-        if self.forms.iter().any(|form| normalize_form(form).is_empty()) {
+        if self
+            .forms
+            .iter()
+            .any(|form| normalize_form(form).is_empty())
+        {
             return Err(CorpusError::Invalid(
                 "SEC form filters must not contain empty values".to_owned(),
             ));
@@ -202,7 +209,9 @@ struct FilingColumns {
     primary_doc_description: Vec<String>,
     items: Vec<String>,
     size: Vec<u64>,
+    #[serde(rename = "isXBRL")]
     is_xbrl: Vec<u8>,
+    #[serde(rename = "isInlineXBRL")]
     is_inline_xbrl: Vec<u8>,
 }
 
@@ -243,9 +252,8 @@ pub fn fetch_sec_filings(options: SecFilingsOptions) -> Result<SecFilingsFetchRe
         timeout: Duration::from_secs(120),
     })?;
     let ticker_response = client.get(SEC_TICKERS_URL, options.maximum_json_bytes)?;
-    let ticker_rows = serde_json::from_slice::<BTreeMap<String, CompanyTickerRow>>(
-        &ticker_response.bytes,
-    )?;
+    let ticker_rows =
+        serde_json::from_slice::<BTreeMap<String, CompanyTickerRow>>(&ticker_response.bytes)?;
     let companies = select_companies(&ticker_rows, &options)?;
     let corpus_id = format!(
         "sec-filings-{}-{}",
@@ -292,10 +300,7 @@ pub fn fetch_sec_filings(options: SecFilingsOptions) -> Result<SecFilingsFetchRe
     let mut counts_by_category = BTreeMap::new();
 
     for selected in &companies {
-        let submission_url = format!(
-            "{SEC_SUBMISSIONS_BASE}/CIK{:010}.json",
-            selected.cik
-        );
+        let submission_url = format!("{SEC_SUBMISSIONS_BASE}/CIK{:010}.json", selected.cik);
         let submission = match client
             .get(&submission_url, options.maximum_json_bytes)
             .and_then(|response| {
@@ -364,12 +369,7 @@ pub fn fetch_sec_filings(options: SecFilingsOptions) -> Result<SecFilingsFetchRe
                     }
                     Err(error) => {
                         failed += 1;
-                        record_failure(
-                            &mut manifest,
-                            history.name.clone(),
-                            Some(url),
-                            error,
-                        );
+                        record_failure(&mut manifest, history.name.clone(), Some(url), error);
                     }
                 }
             }
@@ -596,9 +596,9 @@ fn select_companies(
     let mut selected = BTreeMap::<u64, SelectedCompany>::new();
     for ticker in &options.tickers {
         let normalized = ticker.trim().to_ascii_uppercase();
-        let row = by_ticker
-            .get(&normalized)
-            .ok_or_else(|| CorpusError::Invalid(format!("SEC ticker {normalized} was not found")))?;
+        let row = by_ticker.get(&normalized).ok_or_else(|| {
+            CorpusError::Invalid(format!("SEC ticker {normalized} was not found"))
+        })?;
         selected.insert(
             row.cik_str,
             SelectedCompany {
@@ -693,12 +693,7 @@ fn candidates_from_columns(
             items: columns.items.get(index).cloned().unwrap_or_default(),
             declared_size: columns.size.get(index).copied(),
             is_xbrl: columns.is_xbrl.get(index).copied().unwrap_or(0) != 0,
-            is_inline_xbrl: columns
-                .is_inline_xbrl
-                .get(index)
-                .copied()
-                .unwrap_or(0)
-                != 0,
+            is_inline_xbrl: columns.is_inline_xbrl.get(index).copied().unwrap_or(0) != 0,
         });
     }
     output
@@ -749,13 +744,15 @@ pub fn classify_form(form: &str) -> SecFilingCategory {
         "10-Q" | "10-Q/A" => SecFilingCategory::QuarterlyReport,
         "8-K" | "8-K/A" => SecFilingCategory::CurrentReport,
         "DEF 14A" | "DEFA14A" | "PRE 14A" => SecFilingCategory::Proxy,
-        "S-1" | "S-1/A" | "S-3" | "S-3/A" | "F-1" | "F-1/A" | "F-3"
-        | "F-3/A" => SecFilingCategory::Registration,
+        "S-1" | "S-1/A" | "S-3" | "S-3/A" | "F-1" | "F-1/A" | "F-3" | "F-3/A" => {
+            SecFilingCategory::Registration
+        }
         value if value.starts_with("424B") => SecFilingCategory::Prospectus,
         "6-K" => SecFilingCategory::ForeignReport,
         "UPLOAD" | "CORRESP" => SecFilingCategory::CommentLetter,
-        "3" | "3/A" | "4" | "4/A" | "5" | "5/A" | "SC 13D" | "SC 13D/A"
-        | "SC 13G" | "SC 13G/A" => SecFilingCategory::Ownership,
+        "3" | "3/A" | "4" | "4/A" | "5" | "5/A" | "SC 13D" | "SC 13D/A" | "SC 13G" | "SC 13G/A" => {
+            SecFilingCategory::Ownership
+        }
         _ => SecFilingCategory::Other,
     }
 }
@@ -821,7 +818,14 @@ fn clean_filing_text(input: &str) -> String {
 }
 
 fn short_form_fingerprint(forms: &BTreeSet<String>) -> String {
-    sha256_hex(forms.iter().cloned().collect::<Vec<_>>().join("\n").as_bytes())[..12]
+    sha256_hex(
+        forms
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+            .as_bytes(),
+    )[..12]
         .to_owned()
 }
 
@@ -871,8 +875,8 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{
-        candidates_from_columns, classify_form, normalized_form_set, FilingColumns,
-        SecFilingCategory, SecFilingsOptions,
+        FilingColumns, SecFilingCategory, SecFilingsOptions, candidates_from_columns,
+        classify_form, normalized_form_set,
     };
 
     #[test]

@@ -229,12 +229,8 @@ fn run_suite(command: &Cli) -> CliResult<SuiteReport> {
         index_root,
         retain_indexes: command.retain_indexes,
     };
-    let (proof, rows) = run_scenario_benchmark(
-        &command.corpus_root,
-        &command.queries,
-        queries,
-        &options,
-    )?;
+    let (proof, rows) =
+        run_scenario_benchmark(&command.corpus_root, &command.queries, queries, &options)?;
     atomic_write(&proof_path, &serde_json::to_vec_pretty(&proof)?)?;
     write_score_rows(&scores_path, &rows)?;
 
@@ -272,12 +268,11 @@ fn run_suite(command: &Cli) -> CliResult<SuiteReport> {
         output_directory: command.output.display().to_string(),
         proof: receipt(&proof_path)?,
         scores: receipt(&scores_path)?,
-        claims: claim_report.as_ref().map(|_| receipt(&claims_path)).transpose()?,
-        claim_manifest: command
-            .claim_manifest
-            .as_deref()
-            .map(receipt)
+        claims: claim_report
+            .as_ref()
+            .map(|_| receipt(&claims_path))
             .transpose()?,
+        claim_manifest: command.claim_manifest.as_deref().map(receipt).transpose()?,
         gold_validation: command
             .gold_validation
             .as_deref()
@@ -325,13 +320,19 @@ fn print_report(report: &SuiteReport) {
     println!("Status:                  {}", report.status);
     println!("Claim status:            {}", report.claim_status);
     println!("Profiles:                {}", report.profiles.join(", "));
-    println!("Corpus sizes:            {:?}", report.evaluated_corpus_sizes);
+    println!(
+        "Corpus sizes:            {:?}",
+        report.evaluated_corpus_sizes
+    );
     println!("Proof report:            {}", report.proof.path);
     println!("Pair scores:             {}", report.scores.path);
     if let Some(claims) = &report.claims {
         println!("Claim report:            {}", claims.path);
     }
-    println!("Markdown:                {}", report.bundle.results_markdown);
+    println!(
+        "Markdown:                {}",
+        report.bundle.results_markdown
+    );
     println!("HTML:                    {}", report.bundle.results_html);
     println!("Suite manifest:          {}", report.suite_file);
 }

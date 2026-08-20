@@ -98,12 +98,8 @@ fn run() -> CliResult<()> {
         index_root: command.index_root,
         retain_indexes: command.retain_indexes,
     };
-    let (report, rows) = run_scenario_benchmark(
-        &command.corpus_root,
-        &command.queries,
-        queries,
-        &options,
-    )?;
+    let (report, rows) =
+        run_scenario_benchmark(&command.corpus_root, &command.queries, queries, &options)?;
     atomic_write(&command.output, &serde_json::to_vec_pretty(&report)?)?;
     if let Some(path) = &command.scores_output {
         write_score_rows(path, &rows)?;
@@ -123,10 +119,16 @@ fn print_report(
 ) {
     println!("Corpus:                 {}", report.corpus_id);
     println!("Available documents:    {}", report.available_documents);
-    println!("Required positives:     {}", report.required_positive_documents);
+    println!(
+        "Required positives:     {}",
+        report.required_positive_documents
+    );
     println!("Queries:                {}", report.queries);
     println!("Profiles:               {}", report.profiles.join(", "));
-    println!("Evaluated sizes:        {:?}", report.evaluated_corpus_sizes);
+    println!(
+        "Evaluated sizes:        {:?}",
+        report.evaluated_corpus_sizes
+    );
     if !report.skipped_corpus_sizes.is_empty() {
         println!("Skipped sizes:          {:?}", report.skipped_corpus_sizes);
     }

@@ -29,9 +29,21 @@ fn fits_and_persists_a_valid_profile() {
     for query in 0..12 {
         for candidate in 0..4 {
             let positive = candidate == 0;
-            let lexical = if positive { 0.72 } else { 0.55 - candidate as f64 * 0.08 };
-            let overlap = if positive { 0.94 } else { 0.22 - candidate as f64 * 0.03 };
-            let baseline = if positive { 0.70 } else { 0.45 - candidate as f64 * 0.05 };
+            let lexical = if positive {
+                0.72
+            } else {
+                0.55 - candidate as f64 * 0.08
+            };
+            let overlap = if positive {
+                0.94
+            } else {
+                0.22 - candidate as f64 * 0.03
+            };
+            let baseline = if positive {
+                0.70
+            } else {
+                0.45 - candidate as f64 * 0.05
+            };
             serde_json::to_writer(
                 &mut writer,
                 &ScoreRow {
@@ -71,7 +83,10 @@ fn fits_and_persists_a_valid_profile() {
     .expect("profile");
     profile.validate().expect("valid profile");
     assert!(profile.overlap_weight > profile.lexical_weight);
-    assert_eq!(profile.train_queries + profile.validation_queries + profile.test_queries, 12);
+    assert_eq!(
+        profile.train_queries + profile.validation_queries + profile.test_queries,
+        12
+    );
 
     fs::remove_dir_all(root).ok();
 }

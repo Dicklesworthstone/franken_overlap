@@ -4,7 +4,7 @@ use std::error::Error;
 use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
-use fo_corpus::{section_corpus, SectionCorpusOptions, SectionStrategy};
+use fo_corpus::{SectionCorpusOptions, SectionStrategy, section_corpus};
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 

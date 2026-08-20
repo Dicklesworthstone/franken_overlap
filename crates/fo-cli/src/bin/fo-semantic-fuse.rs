@@ -87,7 +87,10 @@ fn run() -> CliResult<()> {
     } else {
         println!("Hybrid candidates:         {}", report.hybrid_candidates);
         println!("Semantic candidates:       {}", report.semantic_candidates);
-        println!("Cross-lane candidates:     {}", report.overlapping_candidates);
+        println!(
+            "Cross-lane candidates:     {}",
+            report.overlapping_candidates
+        );
         println!(
             "Semantic-only retained:    {}",
             report.semantic_only_candidates_retained
@@ -132,9 +135,11 @@ fn read_semantic_candidates(path: &Path) -> CliResult<SemanticCandidateSet> {
         if value.is_empty() || value.starts_with('#') {
             continue;
         }
-        candidates.push(serde_json::from_str::<SemanticEvidence>(value).map_err(|error| {
-            invalid(format!("{}:{}: {error}", path.display(), line_index + 1))
-        })?);
+        candidates.push(
+            serde_json::from_str::<SemanticEvidence>(value).map_err(|error| {
+                invalid(format!("{}:{}: {error}", path.display(), line_index + 1))
+            })?,
+        );
     }
     let set = SemanticCandidateSet {
         schema_version: 1,
@@ -151,7 +156,9 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> CliResult<()> {
     }
     let temporary = path.with_extension(format!(
         "{}.tmp-{}",
-        path.extension().and_then(|value| value.to_str()).unwrap_or("json"),
+        path.extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("json"),
         std::process::id()
     ));
     fs::write(&temporary, bytes)?;

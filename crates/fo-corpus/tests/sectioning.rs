@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use fo_corpus::{
-    section_corpus, sha256_hex, CorpusDocument, CorpusManifest, CorpusProvider,
-    SectionCorpusOptions, SectionStrategy,
+    CorpusDocument, CorpusManifest, CorpusProvider, SectionCorpusOptions, SectionStrategy,
+    section_corpus, sha256_hex,
 };
 
 #[test]
@@ -17,7 +17,10 @@ fn derives_searchable_gutenberg_chapters_with_parent_metadata() {
     let output = root.join("output");
     fs::create_dir_all(input.join("documents")).expect("documents");
     let chapter_one = repeated("The observatory opened copper shutters before dawn.", 120);
-    let chapter_two = repeated("The kitchen prepared winter vegetables beside the railway.", 120);
+    let chapter_two = repeated(
+        "The kitchen prepared winter vegetables beside the railway.",
+        120,
+    );
     let body = format!(
         "PREFACE\n{}\n\nCHAPTER I. THE OBSERVATORY\n{}\n\nCHAPTER II. THE KITCHEN\n{}",
         repeated("This front matter introduces the book.", 80),

@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use fo_corpus::{
-    import_collection, verify_collection, CollectionImportOptions, CollectionManifest,
-    CollectionProfile,
+    CollectionImportOptions, CollectionManifest, CollectionProfile, import_collection,
+    verify_collection,
 };
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -171,7 +171,10 @@ fn run_inspect(command: InspectCommand) -> CliResult<()> {
     let manifest = CollectionManifest::load(&command.root)?;
     if command.json {
         if let Some(family) = command.family {
-            println!("{}", serde_json::to_string_pretty(&manifest.family(&family))?);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&manifest.family(&family))?
+            );
         } else {
             println!("{}", serde_json::to_string_pretty(&manifest)?);
         }
@@ -189,17 +192,18 @@ fn run_inspect(command: InspectCommand) -> CliResult<()> {
     families.sort_unstable();
     families.dedup();
     for family in families {
-        if command.family.as_deref().is_some_and(|expected| expected != family) {
+        if command
+            .family
+            .as_deref()
+            .is_some_and(|expected| expected != family)
+        {
             continue;
         }
         println!("\n{family}");
         for document in manifest.family(family) {
             println!(
                 "  {}  {}  {}  {}",
-                document
-                    .effective_date
-                    .as_deref()
-                    .unwrap_or("----------"),
+                document.effective_date.as_deref().unwrap_or("----------"),
                 document.version_id,
                 document.document_type,
                 document.id,

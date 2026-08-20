@@ -8,13 +8,13 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 use fo_core::{
-    benchmark_contract_portfolio, compare_contracts, ContractAnalysis, ContractComparison,
-    ContractComparisonOptions, ContractPortfolioBenchmark, ContractPortfolioOptions,
-    PortfolioDocumentAnalysis,
+    ContractAnalysis, ContractComparison, ContractComparisonOptions, ContractPortfolioBenchmark,
+    ContractPortfolioOptions, PortfolioDocumentAnalysis, benchmark_contract_portfolio,
+    compare_contracts,
 };
 use fo_corpus::{
-    atomic_write, verify_collection, CollectionDocumentRecord, CollectionManifest,
-    CollectionRelationKind,
+    CollectionDocumentRecord, CollectionManifest, CollectionRelationKind, atomic_write,
+    verify_collection,
 };
 use serde::Serialize;
 
@@ -212,15 +212,23 @@ fn run_portfolio(command: PortfolioCommand) -> CliResult<()> {
         .take(command.maximum_documents)
         .collect::<Vec<_>>();
     if documents.is_empty() {
-        return Err(invalid("no documents matched the requested portfolio scope"));
+        return Err(invalid(
+            "no documents matched the requested portfolio scope",
+        ));
     }
 
     let mut analyses = BTreeMap::<String, ContractAnalysis>::new();
     for document in &documents {
         let path = analysis_path(&command.analysis_root, &document.id);
-        analyses.insert(document.id.clone(), read_analysis(&path).map_err(|error| {
-            invalid(format!("could not load analysis for {}: {error}", document.id))
-        })?);
+        analyses.insert(
+            document.id.clone(),
+            read_analysis(&path).map_err(|error| {
+                invalid(format!(
+                    "could not load analysis for {}: {error}",
+                    document.id
+                ))
+            })?,
+        );
     }
     let portfolio_input = documents
         .iter()
@@ -327,7 +335,11 @@ fn run_portfolio(command: PortfolioCommand) -> CliResult<()> {
 fn comparison_pairs<'a>(
     manifest: &'a CollectionManifest,
     scoped: &[&'a CollectionDocumentRecord],
-) -> Vec<(String, &'a CollectionDocumentRecord, &'a CollectionDocumentRecord)> {
+) -> Vec<(
+    String,
+    &'a CollectionDocumentRecord,
+    &'a CollectionDocumentRecord,
+)> {
     let scope_ids = scoped
         .iter()
         .map(|document| document.id.as_str())
@@ -383,21 +395,40 @@ fn read_analysis(path: &Path) -> CliResult<ContractAnalysis> {
 }
 
 fn analysis_path(root: &Path, id: &str) -> PathBuf {
-    root.join("documents").join(format!("{}.json", safe_name(id)))
+    root.join("documents")
+        .join(format!("{}.json", safe_name(id)))
 }
 
 fn print_pair(comparison: &ContractComparison) {
-    println!("Overall similarity:          {:.4}", comparison.overall_similarity);
-    println!("Matched clauses:             {}", comparison.matched_clauses);
+    println!(
+        "Overall similarity:          {:.4}",
+        comparison.overall_similarity
+    );
+    println!(
+        "Matched clauses:             {}",
+        comparison.matched_clauses
+    );
     println!("Added clauses:               {}", comparison.added_clauses);
-    println!("Removed clauses:             {}", comparison.removed_clauses);
+    println!(
+        "Removed clauses:             {}",
+        comparison.removed_clauses
+    );
     println!(
         "Materially revised clauses: {}",
         comparison.materially_revised_clauses
     );
-    println!("Definition changes:          {}", comparison.definition_changes.len());
-    println!("Obligation changes:          {}", comparison.obligation_changes.len());
-    println!("Economic changes:            {}", comparison.economic_term_changes.len());
+    println!(
+        "Definition changes:          {}",
+        comparison.definition_changes.len()
+    );
+    println!(
+        "Obligation changes:          {}",
+        comparison.obligation_changes.len()
+    );
+    println!(
+        "Economic changes:            {}",
+        comparison.economic_term_changes.len()
+    );
     println!("Alerts:                      {}", comparison.alerts.len());
     for alert in &comparison.alerts {
         println!(

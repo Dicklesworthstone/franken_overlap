@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use fo_corpus::{
-    fetch_gutenberg, fetch_sec_10k, verify_manifest, CorpusManifest, GutenbergOptions,
-    GutenbergPreset, Sec10KOptions, SecPreset, DEFAULT_GUTENBERG_MIRROR,
+    CorpusManifest, DEFAULT_GUTENBERG_MIRROR, GutenbergOptions, GutenbergPreset, Sec10KOptions,
+    SecPreset, fetch_gutenberg, fetch_sec_10k, verify_manifest,
 };
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;

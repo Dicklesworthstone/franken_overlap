@@ -11,7 +11,8 @@ use clap::Parser;
 use fo_core::{
     GroupedEvaluationOptions, GroupedEvaluationReport, GroupedLabeledScore, HybridDocumentInput,
     HybridIndexBuilder, HybridIndexConfig, HybridQueryMode, HybridSearchOptions,
-    LexicalSearchOptions, NormalizationProfile, SearchOptions, grouped_evaluation_report, normalize,
+    LexicalSearchOptions, NormalizationProfile, SearchOptions, grouped_evaluation_report,
+    normalize,
 };
 use fo_corpus::{CorpusManifest, atomic_write, unix_timestamp};
 use serde::{Deserialize, Serialize};
@@ -184,13 +185,7 @@ struct MethodAccumulator {
 }
 
 impl MethodAccumulator {
-    fn observe(
-        &mut self,
-        query: &QuerySpec,
-        scores: &[f64],
-        labels: &[bool],
-        elapsed: Duration,
-    ) {
+    fn observe(&mut self, query: &QuerySpec, scores: &[f64], labels: &[bool], elapsed: Duration) {
         self.elapsed += elapsed;
         self.latencies_ms.push(elapsed.as_secs_f64() * 1_000.0);
         self.complete_queries += 1;
@@ -299,7 +294,12 @@ fn run() -> BenchResult<()> {
     for query in &queries {
         let labels = documents
             .iter()
-            .map(|document| query.positive_ids.iter().any(|id| id == &document.external_id))
+            .map(|document| {
+                query
+                    .positive_ids
+                    .iter()
+                    .any(|id| id == &document.external_id)
+            })
             .collect::<Vec<_>>();
         let normalized_query = normalize(&query.text, &normalization);
 
@@ -345,7 +345,7 @@ fn run() -> BenchResult<()> {
             minimum_query_coverage: 0.0,
             minimum_source_coverage: 0.0,
             direct_fallback_work_limit: 500_000_000,
-            short_query_candidates: documents.len().min(4_096).max(8),
+            short_query_candidates: documents.len().clamp(8, 4_096),
             minimum_similarity: 0.0,
             ..SearchOptions::default()
         };
@@ -544,9 +544,11 @@ fn read_queries(path: &Path) -> BenchResult<Vec<QuerySpec>> {
         if value.is_empty() || value.starts_with('#') {
             continue;
         }
-        queries.push(serde_json::from_str::<QuerySpec>(value).map_err(|error| {
-            invalid(format!("{}:{}: {error}", path.display(), line_index + 1))
-        })?);
+        queries.push(
+            serde_json::from_str::<QuerySpec>(value).map_err(|error| {
+                invalid(format!("{}:{}: {error}", path.display(), line_index + 1))
+            })?,
+        );
     }
     if queries.is_empty() {
         return Err(invalid(format!("{} contains no queries", path.display())));
@@ -593,7 +595,13 @@ fn load_documents(
         if let Some(language) = &record.language {
             tags.push(language.clone());
         }
-        for key in ["form", "tickers", "subjects", "section_title", "section_origin"] {
+        for key in [
+            "form",
+            "tickers",
+            "subjects",
+            "section_title",
+            "section_origin",
+        ] {
             if let Some(value) = record.metadata.get(key) {
                 tags.extend(
                     value
@@ -711,7 +719,10 @@ fn exhaustive_semi_global(pattern: &[u32], text: &[u32]) -> BenchResult<Exhausti
     }
     let text_start = best.start as usize;
     let text_end = best_end.max(text_start);
-    let denominator = pattern.len().max(text_end.saturating_sub(text_start)).max(1);
+    let denominator = pattern
+        .len()
+        .max(text_end.saturating_sub(text_start))
+        .max(1);
     let similarity = (1.0 - f64::from(best.cost) / denominator as f64).clamp(0.0, 1.0);
     Ok(ExhaustiveAlignment {
         distance: best.cost as usize,
@@ -726,8 +737,7 @@ fn better_transition(left: Cell, right: Cell, end: usize) -> Cell {
     if left.cost < right.cost
         || left.cost == right.cost
             && (span_length(left, end) > span_length(right, end)
-                || span_length(left, end) == span_length(right, end)
-                    && left.start < right.start)
+                || span_length(left, end) == span_length(right, end) && left.start < right.start)
     {
         left
     } else {
@@ -789,7 +799,10 @@ fn percentile(sorted: &[f64], probability: f64) -> f64 {
 }
 
 fn write_jsonl(path: &Path, rows: &[PairScoreRow]) -> BenchResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let temporary = temporary_path(path);
@@ -817,8 +830,7 @@ fn print_report(report: &BenchmarkReport) {
     );
     println!(
         "Exhaustive queries:      {} complete, {} partial",
-        report.exhaustive_coverage.complete_queries,
-        report.exhaustive_coverage.partial_queries
+        report.exhaustive_coverage.complete_queries, report.exhaustive_coverage.partial_queries
     );
     println!(
         "Exhaustive DP cells:     {}",
@@ -904,8 +916,7 @@ mod tests {
 
     #[test]
     fn exhaustive_alignment_finds_exact_infix() {
-        let alignment = exhaustive_semi_global(&[2, 3, 4], &[0, 1, 2, 3, 4, 5])
-            .expect("alignment");
+        let alignment = exhaustive_semi_global(&[2, 3, 4], &[0, 1, 2, 3, 4, 5]).expect("alignment");
         assert_eq!(alignment.distance, 0);
         assert_eq!((alignment.text_start, alignment.text_end), (2, 5));
         assert_eq!(alignment.similarity, 1.0);
@@ -913,8 +924,7 @@ mod tests {
 
     #[test]
     fn exhaustive_alignment_handles_one_substitution() {
-        let alignment = exhaustive_semi_global(&[2, 9, 4], &[0, 2, 3, 4, 8])
-            .expect("alignment");
+        let alignment = exhaustive_semi_global(&[2, 9, 4], &[0, 2, 3, 4, 8]).expect("alignment");
         assert_eq!(alignment.distance, 1);
         assert!(alignment.similarity > 0.60);
     }

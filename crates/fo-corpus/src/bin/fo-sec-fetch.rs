@@ -6,8 +6,8 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 use fo_corpus::{
-    fetch_sec_filings, verify_manifest, SecFilingsOptions, COMMENT_LETTER_FORMS,
-    INVESTOR_CORE_FORMS, REGISTRATION_FORMS,
+    COMMENT_LETTER_FORMS, INVESTOR_CORE_FORMS, REGISTRATION_FORMS, SecFilingsOptions,
+    fetch_sec_filings, verify_manifest,
 };
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -24,6 +24,7 @@ struct Cli {
 }
 
 #[derive(Debug, Subcommand)]
+#[allow(clippy::large_enum_variant)]
 enum Command {
     /// Download selected filing forms for explicit or sampled companies.
     Fetch(FetchCommand),
@@ -146,7 +147,10 @@ fn run_fetch(command: FetchCommand) -> CliResult<()> {
     } else {
         println!("Corpus:                    {}", report.manifest.corpus_id);
         println!("Companies:                 {}", report.companies);
-        println!("Requested forms:           {}", report.requested_forms.join(", "));
+        println!(
+            "Requested forms:           {}",
+            report.requested_forms.join(", ")
+        );
         println!("Candidate filings:         {}", report.candidate_filings);
         println!("Downloaded:                {}", report.downloaded);
         println!("Reused:                    {}", report.reused);
@@ -157,7 +161,10 @@ fn run_fetch(command: FetchCommand) -> CliResult<()> {
             report.historical_submission_files_read
         );
         println!("Failed:                    {}", report.failed);
-        println!("Manifest documents:        {}", report.manifest.documents.len());
+        println!(
+            "Manifest documents:        {}",
+            report.manifest.documents.len()
+        );
         if !report.counts_by_form.is_empty() {
             println!("Forms:");
             for (form, count) in &report.counts_by_form {

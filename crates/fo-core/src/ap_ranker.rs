@@ -41,9 +41,7 @@ impl ApRankingOptions {
                 "AP-ranking epochs must be between 1 and 1,000,000".to_owned(),
             ));
         }
-        if !self.learning_rate.is_finite()
-            || self.learning_rate <= 0.0
-            || self.learning_rate > 10.0
+        if !self.learning_rate.is_finite() || self.learning_rate <= 0.0 || self.learning_rate > 10.0
         {
             return Err(FoError::InvalidConfig(
                 "AP-ranking learning_rate must be finite and lie in (0, 10]".to_owned(),
@@ -54,16 +52,12 @@ impl ApRankingOptions {
                 "AP-ranking l2 must be finite and non-negative".to_owned(),
             ));
         }
-        if self.maximum_negatives_per_query == 0
-            || self.maximum_negatives_per_query > 1_000_000
-        {
+        if self.maximum_negatives_per_query == 0 || self.maximum_negatives_per_query > 1_000_000 {
             return Err(FoError::InvalidConfig(
                 "maximum_negatives_per_query must be between 1 and 1,000,000".to_owned(),
             ));
         }
-        if !self.minimum_ap_delta.is_finite()
-            || !(0.0..=1.0).contains(&self.minimum_ap_delta)
-        {
+        if !self.minimum_ap_delta.is_finite() || !(0.0..=1.0).contains(&self.minimum_ap_delta) {
             return Err(FoError::InvalidConfig(
                 "minimum_ap_delta must be finite and lie in [0, 1]".to_owned(),
             ));
@@ -170,10 +164,8 @@ impl ApRankingModel {
                 epoch_pairs = epoch_pairs.saturating_add(pairs.len());
                 for pair in pairs {
                     let normalized_importance = pair.importance / pair_weight_sum;
-                    let difference = subtract(
-                        &standardized[pair.positive],
-                        &standardized[pair.negative],
-                    );
+                    let difference =
+                        subtract(&standardized[pair.positive], &standardized[pair.negative]);
                     let margin = dot(&weights, &difference);
                     let mistake_probability = sigmoid(-margin);
                     epoch_loss += normalized_importance * softplus(-margin);
@@ -193,7 +185,8 @@ impl ApRankingModel {
             last_epoch_pairs = epoch_pairs;
             let query_scale = 1.0 / epoch_queries as f64;
             epoch_loss *= query_scale;
-            epoch_loss += 0.5 * options.l2 * weights.iter().map(|weight| weight * weight).sum::<f64>();
+            epoch_loss +=
+                0.5 * options.l2 * weights.iter().map(|weight| weight * weight).sum::<f64>();
             let learning_rate = options.learning_rate / (1.0 + epoch as f64 / 100.0).sqrt();
             for (weight, gradient) in weights.iter_mut().zip(gradient) {
                 let regularized = gradient * query_scale + options.l2 * *weight;
@@ -337,8 +330,7 @@ impl ApRankingModel {
         Ok(ApRankingComparison {
             micro_auprc_delta: ranked.micro.average_precision - raw.micro.average_precision,
             macro_auprc_delta: ranked.macro_average_precision - raw.macro_average_precision,
-            mean_reciprocal_rank_delta: ranked.mean_reciprocal_rank
-                - raw.mean_reciprocal_rank,
+            mean_reciprocal_rank_delta: ranked.mean_reciprocal_rank - raw.mean_reciprocal_rank,
             recall_at_1_delta: metric_at_one(&ranked) - metric_at_one(&raw),
             raw,
             ranked,
@@ -401,8 +393,7 @@ fn ap_weighted_pairs(
             if delta < minimum_ap_delta {
                 continue;
             }
-            let feedback_weight =
-                (examples[positive].weight * examples[negative].weight).sqrt();
+            let feedback_weight = (examples[positive].weight * examples[negative].weight).sqrt();
             let importance = delta * feedback_weight;
             if importance.is_finite() && importance > 0.0 {
                 pairs.push(WeightedPair {
@@ -416,7 +407,11 @@ fn ap_weighted_pairs(
     pairs
 }
 
-fn average_precision_swap_delta(labels: &[bool], positive_rank: usize, negative_rank: usize) -> f64 {
+fn average_precision_swap_delta(
+    labels: &[bool],
+    positive_rank: usize,
+    negative_rank: usize,
+) -> f64 {
     if positive_rank == negative_rank
         || positive_rank >= labels.len()
         || negative_rank >= labels.len()
@@ -444,13 +439,13 @@ fn average_precision_swap_delta(labels: &[bool], positive_rank: usize, negative_
         }
     }
     let low_precision = (positives_before_low + 1) as f64 / (low + 1) as f64;
-    let high_precision = (positives_before_low + intermediate_positives + 1) as f64
-        / (high + 1) as f64;
-    let numerator = if positive_moves_up {
-        low_precision + intermediate_effect - high_precision
-    } else {
-        low_precision + intermediate_effect - high_precision
-    };
+    let high_precision =
+        (positives_before_low + intermediate_positives + 1) as f64 / (high + 1) as f64;
+    // The AP contribution magnitude is symmetric for a positive crossing the
+    // same interval in either direction; the final abs() makes the branch on
+    // `positive_moves_up` redundant.
+    let _ = positive_moves_up;
+    let numerator = low_precision + intermediate_effect - high_precision;
     (numerator / positives as f64).abs()
 }
 
@@ -468,9 +463,7 @@ fn grouped_scores(
         .collect()
 }
 
-fn validate_and_group(
-    examples: &[GroupedFeedbackExample],
-) -> Result<BTreeMap<&str, Vec<usize>>> {
+fn validate_and_group(examples: &[GroupedFeedbackExample]) -> Result<BTreeMap<&str, Vec<usize>>> {
     if examples.len() < 2 {
         return Err(FoError::InvalidConfig(
             "AP ranking requires at least two examples".to_owned(),
@@ -507,8 +500,7 @@ fn validate_and_group(
             && indices.iter().any(|&index| !examples[index].label)
     }) {
         return Err(FoError::InvalidConfig(
-            "AP ranking requires a query containing both positive and negative examples"
-                .to_owned(),
+            "AP ranking requires a query containing both positive and negative examples".to_owned(),
         ));
     }
     Ok(grouped)
@@ -575,15 +567,18 @@ fn subtract(
     std::array::from_fn(|feature| left[feature] - right[feature])
 }
 
-fn dot(
-    left: &[f64; AP_RANKING_FEATURE_COUNT],
-    right: &[f64; AP_RANKING_FEATURE_COUNT],
-) -> f64 {
-    left.iter().zip(right).map(|(left, right)| left * right).sum()
+fn dot(left: &[f64; AP_RANKING_FEATURE_COUNT], right: &[f64; AP_RANKING_FEATURE_COUNT]) -> f64 {
+    left.iter()
+        .zip(right)
+        .map(|(left, right)| left * right)
+        .sum()
 }
 
 fn dot_slices(left: &[f64], right: &[f64; AP_RANKING_FEATURE_COUNT]) -> f64 {
-    left.iter().zip(right).map(|(left, right)| left * right).sum()
+    left.iter()
+        .zip(right)
+        .map(|(left, right)| left * right)
+        .sum()
 }
 
 fn sigmoid(value: f64) -> f64 {
@@ -615,12 +610,8 @@ fn metric_at_one(report: &GroupedEvaluationReport) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ApRankingModel, ApRankingOptions, average_precision_swap_delta,
-    };
-    use crate::{
-        GroupedEvaluationOptions, GroupedFeedbackExample, SearchIntent, SearchResult,
-    };
+    use super::{ApRankingModel, ApRankingOptions, average_precision_swap_delta};
+    use crate::{GroupedEvaluationOptions, GroupedFeedbackExample, SearchIntent, SearchResult};
 
     #[test]
     fn swap_delta_matches_brute_force_average_precision() {

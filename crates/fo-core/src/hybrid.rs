@@ -206,8 +206,7 @@ impl HybridIndex {
         fs::create_dir_all(directory).map_err(|error| FoError::io(directory, error))?;
         self.overlap
             .save_compressed(directory.join(HYBRID_OVERLAP_FILENAME))?;
-        self.lexical
-            .save(directory.join(HYBRID_LEXICAL_FILENAME))?;
+        self.lexical.save(directory.join(HYBRID_LEXICAL_FILENAME))?;
         let manifest = HybridManifest {
             schema_version: self.schema_version,
             config: self.config.clone(),
@@ -230,9 +229,8 @@ impl HybridIndex {
         let directory = directory.as_ref();
         let manifest_path = directory.join(HYBRID_MANIFEST_FILENAME);
         let bytes = fs::read(&manifest_path).map_err(|error| FoError::io(&manifest_path, error))?;
-        let manifest = serde_json::from_slice::<HybridManifest>(&bytes).map_err(|error| {
-            FoError::InvalidIndex(format!("invalid hybrid manifest: {error}"))
-        })?;
+        let manifest = serde_json::from_slice::<HybridManifest>(&bytes)
+            .map_err(|error| FoError::InvalidIndex(format!("invalid hybrid manifest: {error}")))?;
         if manifest.schema_version != HYBRID_INDEX_SCHEMA_VERSION {
             return Err(FoError::InvalidIndex(format!(
                 "unsupported hybrid manifest schema {}",
@@ -295,9 +293,8 @@ impl HybridIndex {
         if selected_mode != HybridQueryMode::Overlap {
             let mut lexical_options = options.lexical.clone();
             lexical_options.max_results = expanded_limit;
-            lexical_options.max_candidate_documents = lexical_options
-                .max_candidate_documents
-                .max(expanded_limit);
+            lexical_options.max_candidate_documents =
+                lexical_options.max_candidate_documents.max(expanded_limit);
             lexical_results = self.lexical.search(&lexical_query, &lexical_options)?;
         }
 
@@ -370,8 +367,7 @@ impl HybridIndex {
             let weighted_sum = options.lexical_weight * lexical_score
                 + options.overlap_weight * overlap_score
                 + options.rrf_weight * reciprocal_rank_score;
-            let active_weight = (candidate.lexical.is_some() as u8 as f32)
-                * options.lexical_weight
+            let active_weight = (candidate.lexical.is_some() as u8 as f32) * options.lexical_weight
                 + (candidate.overlap.is_some() as u8 as f32) * options.overlap_weight
                 + options.rrf_weight;
             let base_score = if active_weight > 0.0 {
@@ -792,7 +788,10 @@ fn validate_component_filename(filename: &str) -> Result<()> {
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent).map_err(|error| FoError::io(parent, error))?;
     }
     let mut temporary = PathBuf::from(path);
@@ -901,10 +900,7 @@ mod tests {
                 "winter vegetables",
                 &HybridSearchOptions {
                     filter: super::HybridFilter {
-                        metadata_equals: BTreeMap::from([(
-                            "domain".to_owned(),
-                            "food".to_owned(),
-                        )]),
+                        metadata_equals: BTreeMap::from([("domain".to_owned(), "food".to_owned())]),
                         ..super::HybridFilter::default()
                     },
                     ..HybridSearchOptions::default()

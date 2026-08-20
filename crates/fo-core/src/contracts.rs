@@ -6,19 +6,14 @@ use crate::{FoError, Result};
 
 pub const CONTRACT_ANALYSIS_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContractProfile {
+    #[default]
     General,
     RetailLease,
     ProfessionalServices,
     Nda,
-}
-
-impl Default for ContractProfile {
-    fn default() -> Self {
-        Self::General
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -296,7 +291,9 @@ pub fn analyze_contract(
         let kind = clause
             .classifications
             .first()
-            .map_or(ClauseKind::Unclassified, |classification| classification.kind);
+            .map_or(ClauseKind::Unclassified, |classification| {
+                classification.kind
+            });
         *clause_counts.entry(kind).or_insert(0usize) += 1;
     }
     let warnings = build_warnings(profile, &clauses, &definitions, &economic_terms);
@@ -331,7 +328,9 @@ fn segment_contract(
     }
     if starts.is_empty() {
         starts.push((0, "Document".to_owned()));
-    } else if starts[0].0 > 0 && text[..starts[0].0].trim().len() >= options.minimum_clause_characters {
+    } else if starts[0].0 > 0
+        && text[..starts[0].0].trim().len() >= options.minimum_clause_characters
+    {
         starts.insert(0, (0, "Preamble".to_owned()));
     }
 
@@ -402,8 +401,14 @@ fn is_heading(line: &str, profile: ContractProfile) -> bool {
     if numbered_heading(line) {
         return true;
     }
-    let letters = line.chars().filter(|character| character.is_alphabetic()).count();
-    let uppercase = line.chars().filter(|character| character.is_uppercase()).count();
+    let letters = line
+        .chars()
+        .filter(|character| character.is_alphabetic())
+        .count();
+    let uppercase = line
+        .chars()
+        .filter(|character| character.is_uppercase())
+        .count();
     if letters >= 3 && uppercase.saturating_mul(100) / letters.max(1) >= 75 {
         return true;
     }
@@ -412,20 +417,43 @@ fn is_heading(line: &str, profile: ContractProfile) -> bool {
     }
     let profile_words: &[&str] = match profile {
         ContractProfile::RetailLease => &[
-            "base rent", "percentage rent", "common area", "co-tenancy", "exclusive use",
-            "tenant improvements", "security deposit", "renewal option", "permitted use",
+            "base rent",
+            "percentage rent",
+            "common area",
+            "co-tenancy",
+            "exclusive use",
+            "tenant improvements",
+            "security deposit",
+            "renewal option",
+            "permitted use",
         ],
         ContractProfile::ProfessionalServices => &[
-            "scope of services", "deliverables", "acceptance", "change order", "service levels",
-            "fees and expenses", "work product", "project schedule",
+            "scope of services",
+            "deliverables",
+            "acceptance",
+            "change order",
+            "service levels",
+            "fees and expenses",
+            "work product",
+            "project schedule",
         ],
         ContractProfile::Nda => &[
-            "confidential information", "exclusions", "permitted disclosure", "return or destruction",
-            "residuals", "standstill", "non-solicitation",
+            "confidential information",
+            "exclusions",
+            "permitted disclosure",
+            "return or destruction",
+            "residuals",
+            "standstill",
+            "non-solicitation",
         ],
         ContractProfile::General => &[
-            "definitions", "term and termination", "confidentiality", "indemnification",
-            "limitation of liability", "governing law", "notices",
+            "definitions",
+            "term and termination",
+            "confidentiality",
+            "indemnification",
+            "limitation of liability",
+            "governing law",
+            "notices",
         ],
     };
     profile_words.iter().any(|word| lower == *word)
@@ -537,38 +565,170 @@ struct Rule {
 
 fn classification_rules(profile: ContractProfile) -> Vec<Rule> {
     let mut rules = vec![
-        rule(ClauseKind::Parties, &["parties"], &["between", "party", "hereinafter"]),
-        rule(ClauseKind::Recitals, &["recitals", "whereas"], &["whereas", "background"]),
-        rule(ClauseKind::Definitions, &["definitions", "defined terms"], &[" means ", "shall mean", "defined as"]),
-        rule(ClauseKind::Term, &["term", "duration"], &["effective date", "commence", "expire"]),
-        rule(ClauseKind::Renewal, &["renewal", "extension"], &["renew", "extended term"]),
-        rule(ClauseKind::Fees, &["fees", "compensation"], &["fee", "compensation", "rate"]),
-        rule(ClauseKind::Invoicing, &["invoice", "billing"], &["invoice", "billing"]),
-        rule(ClauseKind::Payment, &["payment", "payment terms"], &["pay", "net 30", "late payment"]),
-        rule(ClauseKind::Taxes, &["taxes", "tax"], &["tax", "withholding"]),
-        rule(ClauseKind::Confidentiality, &["confidentiality"], &["confidential", "non-public information"]),
-        rule(ClauseKind::IntellectualProperty, &["intellectual property", "ownership"], &["intellectual property", "copyright", "patent"]),
-        rule(ClauseKind::DataProtection, &["data protection", "privacy"], &["personal data", "privacy", "data protection"]),
-        rule(ClauseKind::DataSecurity, &["security", "information security"], &["security controls", "breach", "cybersecurity"]),
-        rule(ClauseKind::Audit, &["audit", "records"], &["audit", "books and records"]),
-        rule(ClauseKind::Compliance, &["compliance", "laws"], &["comply with", "applicable law"]),
-        rule(ClauseKind::Representations, &["representations"], &["represents", "representation"]),
-        rule(ClauseKind::Warranties, &["warranties", "warranty"], &["warrants", "warranty"]),
-        rule(ClauseKind::Indemnification, &["indemnification", "indemnity"], &["indemnify", "hold harmless", "defend"]),
-        rule(ClauseKind::LimitationOfLiability, &["limitation of liability", "liability"], &["aggregate liability", "consequential damages", "liability shall not exceed"]),
-        rule(ClauseKind::Insurance, &["insurance"], &["insurance", "coverage", "policy limit"]),
-        rule(ClauseKind::Assignment, &["assignment"], &["assign", "transfer"]),
-        rule(ClauseKind::ChangeOfControl, &["change of control"], &["change in control", "change of control"]),
-        rule(ClauseKind::Termination, &["termination", "default"], &["terminate", "material breach", "cure period"]),
-        rule(ClauseKind::ForceMajeure, &["force majeure"], &["force majeure", "beyond its reasonable control"]),
-        rule(ClauseKind::GoverningLaw, &["governing law"], &["governed by", "laws of the state"]),
-        rule(ClauseKind::DisputeResolution, &["dispute", "arbitration"], &["arbitration", "venue", "jurisdiction"]),
-        rule(ClauseKind::Notices, &["notices", "notice"], &["notice shall", "delivered to"]),
-        rule(ClauseKind::EntireAgreement, &["entire agreement"], &["entire agreement", "complete understanding"]),
-        rule(ClauseKind::Amendment, &["amendment", "modification"], &["amended", "modified", "writing signed"]),
-        rule(ClauseKind::Waiver, &["waiver"], &["waiver", "failure to enforce"]),
-        rule(ClauseKind::Severability, &["severability"], &["invalid or unenforceable", "severed"]),
-        rule(ClauseKind::Survival, &["survival"], &["survive termination", "survival"]),
+        rule(
+            ClauseKind::Parties,
+            &["parties"],
+            &["between", "party", "hereinafter"],
+        ),
+        rule(
+            ClauseKind::Recitals,
+            &["recitals", "whereas"],
+            &["whereas", "background"],
+        ),
+        rule(
+            ClauseKind::Definitions,
+            &["definitions", "defined terms"],
+            &[" means ", "shall mean", "defined as"],
+        ),
+        rule(
+            ClauseKind::Term,
+            &["term", "duration"],
+            &["effective date", "commence", "expire"],
+        ),
+        rule(
+            ClauseKind::Renewal,
+            &["renewal", "extension"],
+            &["renew", "extended term"],
+        ),
+        rule(
+            ClauseKind::Fees,
+            &["fees", "compensation"],
+            &["fee", "compensation", "rate"],
+        ),
+        rule(
+            ClauseKind::Invoicing,
+            &["invoice", "billing"],
+            &["invoice", "billing"],
+        ),
+        rule(
+            ClauseKind::Payment,
+            &["payment", "payment terms"],
+            &["pay", "net 30", "late payment"],
+        ),
+        rule(
+            ClauseKind::Taxes,
+            &["taxes", "tax"],
+            &["tax", "withholding"],
+        ),
+        rule(
+            ClauseKind::Confidentiality,
+            &["confidentiality"],
+            &["confidential", "non-public information"],
+        ),
+        rule(
+            ClauseKind::IntellectualProperty,
+            &["intellectual property", "ownership"],
+            &["intellectual property", "copyright", "patent"],
+        ),
+        rule(
+            ClauseKind::DataProtection,
+            &["data protection", "privacy"],
+            &["personal data", "privacy", "data protection"],
+        ),
+        rule(
+            ClauseKind::DataSecurity,
+            &["security", "information security"],
+            &["security controls", "breach", "cybersecurity"],
+        ),
+        rule(
+            ClauseKind::Audit,
+            &["audit", "records"],
+            &["audit", "books and records"],
+        ),
+        rule(
+            ClauseKind::Compliance,
+            &["compliance", "laws"],
+            &["comply with", "applicable law"],
+        ),
+        rule(
+            ClauseKind::Representations,
+            &["representations"],
+            &["represents", "representation"],
+        ),
+        rule(
+            ClauseKind::Warranties,
+            &["warranties", "warranty"],
+            &["warrants", "warranty"],
+        ),
+        rule(
+            ClauseKind::Indemnification,
+            &["indemnification", "indemnity"],
+            &["indemnify", "hold harmless", "defend"],
+        ),
+        rule(
+            ClauseKind::LimitationOfLiability,
+            &["limitation of liability", "liability"],
+            &[
+                "aggregate liability",
+                "consequential damages",
+                "liability shall not exceed",
+            ],
+        ),
+        rule(
+            ClauseKind::Insurance,
+            &["insurance"],
+            &["insurance", "coverage", "policy limit"],
+        ),
+        rule(
+            ClauseKind::Assignment,
+            &["assignment"],
+            &["assign", "transfer"],
+        ),
+        rule(
+            ClauseKind::ChangeOfControl,
+            &["change of control"],
+            &["change in control", "change of control"],
+        ),
+        rule(
+            ClauseKind::Termination,
+            &["termination", "default"],
+            &["terminate", "material breach", "cure period"],
+        ),
+        rule(
+            ClauseKind::ForceMajeure,
+            &["force majeure"],
+            &["force majeure", "beyond its reasonable control"],
+        ),
+        rule(
+            ClauseKind::GoverningLaw,
+            &["governing law"],
+            &["governed by", "laws of the state"],
+        ),
+        rule(
+            ClauseKind::DisputeResolution,
+            &["dispute", "arbitration"],
+            &["arbitration", "venue", "jurisdiction"],
+        ),
+        rule(
+            ClauseKind::Notices,
+            &["notices", "notice"],
+            &["notice shall", "delivered to"],
+        ),
+        rule(
+            ClauseKind::EntireAgreement,
+            &["entire agreement"],
+            &["entire agreement", "complete understanding"],
+        ),
+        rule(
+            ClauseKind::Amendment,
+            &["amendment", "modification"],
+            &["amended", "modified", "writing signed"],
+        ),
+        rule(
+            ClauseKind::Waiver,
+            &["waiver"],
+            &["waiver", "failure to enforce"],
+        ),
+        rule(
+            ClauseKind::Severability,
+            &["severability"],
+            &["invalid or unenforceable", "severed"],
+        ),
+        rule(
+            ClauseKind::Survival,
+            &["survival"],
+            &["survive termination", "survival"],
+        ),
     ];
     match profile {
         ContractProfile::RetailLease => rules.extend(retail_lease_rules()),
@@ -593,70 +753,294 @@ const fn rule(
 
 fn retail_lease_rules() -> Vec<Rule> {
     vec![
-        rule(ClauseKind::Premises, &["premises", "demised premises"], &["premises", "square feet", "shopping center"]),
-        rule(ClauseKind::PermittedUse, &["use", "permitted use"], &["permitted use", "use the premises"]),
-        rule(ClauseKind::BaseRent, &["base rent", "minimum rent"], &["base rent", "minimum annual rent"]),
-        rule(ClauseKind::PercentageRent, &["percentage rent"], &["gross sales", "percentage rent", "breakpoint"]),
-        rule(ClauseKind::CommonAreaMaintenance, &["common area", "operating expenses", "cam"], &["common area maintenance", "operating expenses", "pro rata share"]),
-        rule(ClauseKind::Utilities, &["utilities"], &["electricity", "water", "utilities"]),
-        rule(ClauseKind::MaintenanceAndRepair, &["maintenance", "repairs"], &["maintain", "repair", "hvac"]),
-        rule(ClauseKind::Alterations, &["alterations"], &["alteration", "landlord consent"]),
-        rule(ClauseKind::Signage, &["signs", "signage"], &["signage", "sign criteria"]),
-        rule(ClauseKind::AssignmentAndSubletting, &["assignment and subletting", "subletting"], &["sublease", "assignee", "recapture"]),
-        rule(ClauseKind::CoTenancy, &["co-tenancy", "cotenancy"], &["co-tenancy", "occupancy threshold", "anchor tenant"]),
-        rule(ClauseKind::Exclusivity, &["exclusive use", "exclusivity"], &["exclusive", "competing use"]),
-        rule(ClauseKind::GoDark, &["go dark", "continuous operation"], &["continuously operate", "go dark"]),
-        rule(ClauseKind::KickOut, &["kick-out", "termination right"], &["sales threshold", "terminate this lease"]),
-        rule(ClauseKind::RadiusRestriction, &["radius restriction"], &["radius", "competing store"]),
-        rule(ClauseKind::RenewalOption, &["renewal option", "option to extend"], &["option term", "renewal rent"]),
-        rule(ClauseKind::SecurityDeposit, &["security deposit"], &["security deposit", "letter of credit"]),
-        rule(ClauseKind::TenantImprovement, &["tenant improvement", "allowance"], &["tenant improvement allowance", "build-out"]),
-        rule(ClauseKind::DeliveryCondition, &["delivery", "delivery condition"], &["deliver the premises", "substantial completion"]),
-        rule(ClauseKind::OpeningCovenant, &["opening", "opening covenant"], &["open for business", "opening date"]),
-        rule(ClauseKind::OperatingHours, &["hours of operation", "operating hours"], &["business hours", "remain open"]),
-        rule(ClauseKind::Casualty, &["casualty", "damage"], &["fire or other casualty", "restore"]),
-        rule(ClauseKind::Condemnation, &["condemnation", "eminent domain"], &["condemnation", "taking"]),
-        rule(ClauseKind::SubordinationNondisturbance, &["subordination", "non-disturbance", "snda"], &["subordinate", "mortgagee", "non-disturbance"]),
-        rule(ClauseKind::Estoppel, &["estoppel"], &["estoppel certificate"]),
-        rule(ClauseKind::Holdover, &["holdover"], &["holdover", "month-to-month"]),
-        rule(ClauseKind::Surrender, &["surrender"], &["surrender the premises", "remove"]),
-        rule(ClauseKind::Guaranty, &["guaranty", "guarantee"], &["guarantor", "guarantees"]),
+        rule(
+            ClauseKind::Premises,
+            &["premises", "demised premises"],
+            &["premises", "square feet", "shopping center"],
+        ),
+        rule(
+            ClauseKind::PermittedUse,
+            &["use", "permitted use"],
+            &["permitted use", "use the premises"],
+        ),
+        rule(
+            ClauseKind::BaseRent,
+            &["base rent", "minimum rent"],
+            &["base rent", "minimum annual rent"],
+        ),
+        rule(
+            ClauseKind::PercentageRent,
+            &["percentage rent"],
+            &["gross sales", "percentage rent", "breakpoint"],
+        ),
+        rule(
+            ClauseKind::CommonAreaMaintenance,
+            &["common area", "operating expenses", "cam"],
+            &[
+                "common area maintenance",
+                "operating expenses",
+                "pro rata share",
+            ],
+        ),
+        rule(
+            ClauseKind::Utilities,
+            &["utilities"],
+            &["electricity", "water", "utilities"],
+        ),
+        rule(
+            ClauseKind::MaintenanceAndRepair,
+            &["maintenance", "repairs"],
+            &["maintain", "repair", "hvac"],
+        ),
+        rule(
+            ClauseKind::Alterations,
+            &["alterations"],
+            &["alteration", "landlord consent"],
+        ),
+        rule(
+            ClauseKind::Signage,
+            &["signs", "signage"],
+            &["signage", "sign criteria"],
+        ),
+        rule(
+            ClauseKind::AssignmentAndSubletting,
+            &["assignment and subletting", "subletting"],
+            &["sublease", "assignee", "recapture"],
+        ),
+        rule(
+            ClauseKind::CoTenancy,
+            &["co-tenancy", "cotenancy"],
+            &["co-tenancy", "occupancy threshold", "anchor tenant"],
+        ),
+        rule(
+            ClauseKind::Exclusivity,
+            &["exclusive use", "exclusivity"],
+            &["exclusive", "competing use"],
+        ),
+        rule(
+            ClauseKind::GoDark,
+            &["go dark", "continuous operation"],
+            &["continuously operate", "go dark"],
+        ),
+        rule(
+            ClauseKind::KickOut,
+            &["kick-out", "termination right"],
+            &["sales threshold", "terminate this lease"],
+        ),
+        rule(
+            ClauseKind::RadiusRestriction,
+            &["radius restriction"],
+            &["radius", "competing store"],
+        ),
+        rule(
+            ClauseKind::RenewalOption,
+            &["renewal option", "option to extend"],
+            &["option term", "renewal rent"],
+        ),
+        rule(
+            ClauseKind::SecurityDeposit,
+            &["security deposit"],
+            &["security deposit", "letter of credit"],
+        ),
+        rule(
+            ClauseKind::TenantImprovement,
+            &["tenant improvement", "allowance"],
+            &["tenant improvement allowance", "build-out"],
+        ),
+        rule(
+            ClauseKind::DeliveryCondition,
+            &["delivery", "delivery condition"],
+            &["deliver the premises", "substantial completion"],
+        ),
+        rule(
+            ClauseKind::OpeningCovenant,
+            &["opening", "opening covenant"],
+            &["open for business", "opening date"],
+        ),
+        rule(
+            ClauseKind::OperatingHours,
+            &["hours of operation", "operating hours"],
+            &["business hours", "remain open"],
+        ),
+        rule(
+            ClauseKind::Casualty,
+            &["casualty", "damage"],
+            &["fire or other casualty", "restore"],
+        ),
+        rule(
+            ClauseKind::Condemnation,
+            &["condemnation", "eminent domain"],
+            &["condemnation", "taking"],
+        ),
+        rule(
+            ClauseKind::SubordinationNondisturbance,
+            &["subordination", "non-disturbance", "snda"],
+            &["subordinate", "mortgagee", "non-disturbance"],
+        ),
+        rule(
+            ClauseKind::Estoppel,
+            &["estoppel"],
+            &["estoppel certificate"],
+        ),
+        rule(
+            ClauseKind::Holdover,
+            &["holdover"],
+            &["holdover", "month-to-month"],
+        ),
+        rule(
+            ClauseKind::Surrender,
+            &["surrender"],
+            &["surrender the premises", "remove"],
+        ),
+        rule(
+            ClauseKind::Guaranty,
+            &["guaranty", "guarantee"],
+            &["guarantor", "guarantees"],
+        ),
     ]
 }
 
 fn professional_services_rules() -> Vec<Rule> {
     vec![
-        rule(ClauseKind::Scope, &["scope", "services"], &["services", "statement of work", "scope"]),
-        rule(ClauseKind::Deliverables, &["deliverables"], &["deliverable", "work product"]),
-        rule(ClauseKind::Milestones, &["milestones", "schedule"], &["milestone", "project plan"]),
-        rule(ClauseKind::Acceptance, &["acceptance"], &["acceptance criteria", "deemed accepted", "reject"]),
-        rule(ClauseKind::ChangeControl, &["change control", "change order"], &["change order", "scope change"]),
-        rule(ClauseKind::Expenses, &["expenses"], &["reimbursable", "travel expenses"]),
-        rule(ClauseKind::ServiceLevels, &["service levels", "sla"], &["service level", "uptime", "service credit"]),
-        rule(ClauseKind::Staffing, &["personnel", "staffing"], &["key personnel", "replace personnel"]),
-        rule(ClauseKind::Subcontracting, &["subcontracting", "subcontractors"], &["subcontractor", "delegate"]),
-        rule(ClauseKind::WorkProduct, &["work product", "deliverable ownership"], &["work product", "work made for hire"]),
-        rule(ClauseKind::BackgroundIp, &["background intellectual property", "pre-existing materials"], &["background ip", "pre-existing"]),
-        rule(ClauseKind::OpenSource, &["open source"], &["open source", "copyleft"]),
-        rule(ClauseKind::TransitionAssistance, &["transition assistance"], &["transition services", "knowledge transfer"]),
+        rule(
+            ClauseKind::Scope,
+            &["scope", "services"],
+            &["services", "statement of work", "scope"],
+        ),
+        rule(
+            ClauseKind::Deliverables,
+            &["deliverables"],
+            &["deliverable", "work product"],
+        ),
+        rule(
+            ClauseKind::Milestones,
+            &["milestones", "schedule"],
+            &["milestone", "project plan"],
+        ),
+        rule(
+            ClauseKind::Acceptance,
+            &["acceptance"],
+            &["acceptance criteria", "deemed accepted", "reject"],
+        ),
+        rule(
+            ClauseKind::ChangeControl,
+            &["change control", "change order"],
+            &["change order", "scope change"],
+        ),
+        rule(
+            ClauseKind::Expenses,
+            &["expenses"],
+            &["reimbursable", "travel expenses"],
+        ),
+        rule(
+            ClauseKind::ServiceLevels,
+            &["service levels", "sla"],
+            &["service level", "uptime", "service credit"],
+        ),
+        rule(
+            ClauseKind::Staffing,
+            &["personnel", "staffing"],
+            &["key personnel", "replace personnel"],
+        ),
+        rule(
+            ClauseKind::Subcontracting,
+            &["subcontracting", "subcontractors"],
+            &["subcontractor", "delegate"],
+        ),
+        rule(
+            ClauseKind::WorkProduct,
+            &["work product", "deliverable ownership"],
+            &["work product", "work made for hire"],
+        ),
+        rule(
+            ClauseKind::BackgroundIp,
+            &["background intellectual property", "pre-existing materials"],
+            &["background ip", "pre-existing"],
+        ),
+        rule(
+            ClauseKind::OpenSource,
+            &["open source"],
+            &["open source", "copyleft"],
+        ),
+        rule(
+            ClauseKind::TransitionAssistance,
+            &["transition assistance"],
+            &["transition services", "knowledge transfer"],
+        ),
     ]
 }
 
 fn nda_rules() -> Vec<Rule> {
     vec![
-        rule(ClauseKind::ConfidentialInformation, &["confidential information", "definition"], &["confidential information means", "designated confidential"]),
-        rule(ClauseKind::ConfidentialityExclusions, &["exclusions", "exceptions"], &["publicly available", "already known", "independently developed"]),
-        rule(ClauseKind::UseRestrictions, &["use", "non-use"], &["solely for", "not use", "purpose"]),
-        rule(ClauseKind::PermittedRecipients, &["representatives", "permitted recipients"], &["employees", "advisers", "need to know"]),
-        rule(ClauseKind::CompelledDisclosure, &["required disclosure", "compelled disclosure"], &["subpoena", "court order", "legally required"]),
-        rule(ClauseKind::ReturnOrDestruction, &["return or destruction", "return of information"], &["return", "destroy", "certify destruction"]),
-        rule(ClauseKind::Residuals, &["residuals"], &["unaided memory", "residual knowledge"]),
-        rule(ClauseKind::NoLicense, &["no license"], &["no license", "no transfer of ownership"]),
-        rule(ClauseKind::Standstill, &["standstill"], &["acquire securities", "proxy solicitation"]),
-        rule(ClauseKind::NonSolicit, &["non-solicitation"], &["solicit customers", "solicit employees"]),
-        rule(ClauseKind::NoHire, &["no-hire", "no hire"], &["hire any employee", "employ"]),
-        rule(ClauseKind::NonCircumvention, &["non-circumvention"], &["circumvent", "business opportunity"]),
-        rule(ClauseKind::InjunctiveRelief, &["injunctive relief", "equitable relief"], &["irreparable harm", "injunction", "specific performance"]),
+        rule(
+            ClauseKind::ConfidentialInformation,
+            &["confidential information", "definition"],
+            &["confidential information means", "designated confidential"],
+        ),
+        rule(
+            ClauseKind::ConfidentialityExclusions,
+            &["exclusions", "exceptions"],
+            &[
+                "publicly available",
+                "already known",
+                "independently developed",
+            ],
+        ),
+        rule(
+            ClauseKind::UseRestrictions,
+            &["use", "non-use"],
+            &["solely for", "not use", "purpose"],
+        ),
+        rule(
+            ClauseKind::PermittedRecipients,
+            &["representatives", "permitted recipients"],
+            &["employees", "advisers", "need to know"],
+        ),
+        rule(
+            ClauseKind::CompelledDisclosure,
+            &["required disclosure", "compelled disclosure"],
+            &["subpoena", "court order", "legally required"],
+        ),
+        rule(
+            ClauseKind::ReturnOrDestruction,
+            &["return or destruction", "return of information"],
+            &["return", "destroy", "certify destruction"],
+        ),
+        rule(
+            ClauseKind::Residuals,
+            &["residuals"],
+            &["unaided memory", "residual knowledge"],
+        ),
+        rule(
+            ClauseKind::NoLicense,
+            &["no license"],
+            &["no license", "no transfer of ownership"],
+        ),
+        rule(
+            ClauseKind::Standstill,
+            &["standstill"],
+            &["acquire securities", "proxy solicitation"],
+        ),
+        rule(
+            ClauseKind::NonSolicit,
+            &["non-solicitation"],
+            &["solicit customers", "solicit employees"],
+        ),
+        rule(
+            ClauseKind::NoHire,
+            &["no-hire", "no hire"],
+            &["hire any employee", "employ"],
+        ),
+        rule(
+            ClauseKind::NonCircumvention,
+            &["non-circumvention"],
+            &["circumvent", "business opportunity"],
+        ),
+        rule(
+            ClauseKind::InjunctiveRelief,
+            &["injunctive relief", "equitable relief"],
+            &["irreparable harm", "injunction", "specific performance"],
+        ),
     ]
 }
 
@@ -670,10 +1054,15 @@ fn extract_definitions(
     for clause in clauses {
         for (sentence_start, sentence) in sentence_offsets(&clause.text) {
             let lower = sentence.to_ascii_lowercase();
-            let marker = [" shall mean ", " means ", " has the meaning ", " is defined as "]
-                .iter()
-                .filter_map(|marker| lower.find(marker).map(|index| (index, *marker)))
-                .min_by_key(|(index, _)| *index);
+            let marker = [
+                " shall mean ",
+                " means ",
+                " has the meaning ",
+                " is defined as ",
+            ]
+            .iter()
+            .filter_map(|marker| lower.find(marker).map(|index| (index, *marker)))
+            .min_by_key(|(index, _)| *index);
             let Some((index, marker)) = marker else {
                 continue;
             };
@@ -735,19 +1124,27 @@ fn extract_obligations(
                 .chars()
                 .rev()
                 .collect::<String>();
-            let action = sentence[modal_end..].trim().chars().take(320).collect::<String>();
+            let action = sentence[modal_end..]
+                .trim()
+                .chars()
+                .take(320)
+                .collect::<String>();
             if subject.is_empty() || action.is_empty() {
                 continue;
             }
             let trigger = extract_trigger(sentence);
             let deadline = extract_deadline(sentence);
             let remedy = extract_remedy(sentence);
-            let confidence = (0.58
-                + if subject.split_whitespace().count() <= 12 { 0.10 } else { 0.0 }
+            let confidence = (0.58f32
+                + if subject.split_whitespace().count() <= 12 {
+                    0.10
+                } else {
+                    0.0
+                }
                 + if deadline.is_some() { 0.08 } else { 0.0 }
                 + if trigger.is_some() { 0.06 } else { 0.0 }
                 + if remedy.is_some() { 0.06 } else { 0.0 })
-                .min(0.95);
+            .min(0.95);
             let absolute_start = clause.start_byte + sentence_start;
             output.push(ContractObligation {
                 clause_index: clause.index,
@@ -793,7 +1190,14 @@ fn find_modality(lower: &str) -> Option<(usize, usize, ObligationModality)> {
 
 fn extract_trigger(sentence: &str) -> Option<String> {
     let lower = sentence.to_ascii_lowercase();
-    for marker in ["in the event that", "provided that", "subject to", "upon ", "if ", "when "] {
+    for marker in [
+        "in the event that",
+        "provided that",
+        "subject to",
+        "upon ",
+        "if ",
+        "when ",
+    ] {
         if let Some(index) = lower.find(marker) {
             return Some(
                 sentence[index..]
@@ -812,7 +1216,13 @@ fn extract_trigger(sentence: &str) -> Option<String> {
 
 fn extract_deadline(sentence: &str) -> Option<String> {
     let lower = sentence.to_ascii_lowercase();
-    for marker in ["within ", "no later than ", "at least ", "not less than ", "not more than "] {
+    for marker in [
+        "within ",
+        "no later than ",
+        "at least ",
+        "not less than ",
+        "not more than ",
+    ] {
         if let Some(index) = lower.find(marker) {
             let candidate = sentence[index..]
                 .split([',', ';', '.'])
@@ -833,8 +1243,14 @@ fn extract_deadline(sentence: &str) -> Option<String> {
 fn extract_remedy(sentence: &str) -> Option<String> {
     let lower = sentence.to_ascii_lowercase();
     for marker in [
-        "terminate", "indemnify", "damages", "service credit", "cure", "injunctive relief",
-        "specific performance", "withhold payment",
+        "terminate",
+        "indemnify",
+        "damages",
+        "service credit",
+        "cure",
+        "injunctive relief",
+        "specific performance",
+        "withhold payment",
     ] {
         if let Some(index) = lower.find(marker) {
             return Some(
@@ -870,7 +1286,9 @@ fn extract_economic_terms(
     }
     output.sort_unstable_by_key(|term| (term.start_byte, term.end_byte));
     output.dedup_by(|left, right| {
-        left.start_byte == right.start_byte && left.end_byte == right.end_byte && left.kind == right.kind
+        left.start_byte == right.start_byte
+            && left.end_byte == right.end_byte
+            && left.kind == right.kind
     });
     output.truncate(maximum);
     output
@@ -890,7 +1308,18 @@ fn scan_money_and_percentages(
             if end > index + 1 {
                 let raw = &clause.text[index..end];
                 let value = parse_number(&raw[1..]);
-                push_term(source, clause, index, end, EconomicTermKind::Money, raw, value, Some("currency"), Some("USD"), output);
+                push_term(
+                    source,
+                    clause,
+                    index,
+                    end,
+                    EconomicTermKind::Money,
+                    raw,
+                    value,
+                    Some("currency"),
+                    Some("USD"),
+                    output,
+                );
                 index = end;
                 continue;
             }
@@ -902,7 +1331,18 @@ fn scan_money_and_percentages(
                 let raw = &clause.text[index..end];
                 let value = parse_number(&raw[..raw.len() - 1]);
                 let kind = classify_percentage_context(&context(&clause.text, index, end));
-                push_term(source, clause, index, end, kind, raw, value, Some("percent"), None, output);
+                push_term(
+                    source,
+                    clause,
+                    index,
+                    end,
+                    kind,
+                    raw,
+                    value,
+                    Some("percent"),
+                    None,
+                    output,
+                );
                 index = end;
                 continue;
             }
@@ -927,7 +1367,10 @@ fn scan_number_units(
             continue;
         };
         let unit_lower = window[1].text.to_ascii_lowercase();
-        if matches!(unit_lower.as_str(), "day" | "days" | "month" | "months" | "year" | "years") {
+        if matches!(
+            unit_lower.as_str(),
+            "day" | "days" | "month" | "months" | "year" | "years"
+        ) {
             let start = window[0].start;
             let end = window[1].end;
             let term_context = context(&clause.text, start, end);
@@ -951,9 +1394,7 @@ fn scan_number_units(
         if output.len() >= maximum {
             return;
         }
-        if window[0].text.eq_ignore_ascii_case("net")
-            && window[1].text.parse::<f64>().is_ok()
-        {
+        if window[0].text.eq_ignore_ascii_case("net") && window[1].text.parse::<f64>().is_ok() {
             let start = window[0].start;
             let end = window[1].end;
             let raw = &clause.text[start..end];
@@ -1027,7 +1468,10 @@ fn classify_percentage_context(context: &str) -> EconomicTermKind {
     let lower = context.to_ascii_lowercase();
     if lower.contains("percentage rent") || lower.contains("gross sales") {
         EconomicTermKind::PercentageRent
-    } else if lower.contains("increase") || lower.contains("escalat") || lower.contains("annual rent") {
+    } else if lower.contains("increas")
+        || lower.contains("escalat")
+        || lower.contains("annual rent")
+    {
         EconomicTermKind::RentEscalation
     } else if lower.contains("interest") || lower.contains("late payment") {
         EconomicTermKind::InterestRate
@@ -1042,7 +1486,8 @@ fn classify_duration_context(context: &str) -> EconomicTermKind {
     let lower = context.to_ascii_lowercase();
     if lower.contains("notice") || lower.contains("notify") {
         EconomicTermKind::NoticePeriod
-    } else if lower.contains("renewal") || lower.contains("option term") || lower.contains("extend") {
+    } else if lower.contains("renewal") || lower.contains("option term") || lower.contains("extend")
+    {
         EconomicTermKind::RenewalTerm
     } else if lower.contains("invoice") || lower.contains("payment") || lower.contains("pay") {
         EconomicTermKind::PaymentTerm
@@ -1128,7 +1573,10 @@ fn context(text: &str, start: usize, end: usize) -> String {
     while right < text.len() && !text.is_char_boundary(right) {
         right += 1;
     }
-    text[left..right].split_whitespace().collect::<Vec<_>>().join(" ")
+    text[left..right]
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn build_warnings(
@@ -1139,11 +1587,16 @@ fn build_warnings(
 ) -> Vec<ContractWarning> {
     let present = clauses
         .iter()
-        .flat_map(|clause| clause.classifications.iter().map(|classification| classification.kind))
+        .flat_map(|clause| {
+            clause
+                .classifications
+                .iter()
+                .map(|classification| classification.kind)
+        })
         .collect::<BTreeSet<_>>();
     let mut warnings = Vec::new();
     for kind in required_clause_kinds(profile) {
-        if !present.contains(&kind) {
+        if !present.contains(kind) {
             warnings.push(ContractWarning {
                 code: "missing_expected_clause".to_owned(),
                 message: format!("expected {:?} clause was not identified", kind),
@@ -1168,7 +1621,9 @@ fn build_warnings(
         }
     }
     if profile == ContractProfile::RetailLease
-        && !economic_terms.iter().any(|term| term.kind == EconomicTermKind::BaseRent)
+        && !economic_terms
+            .iter()
+            .any(|term| term.kind == EconomicTermKind::BaseRent)
     {
         warnings.push(ContractWarning {
             code: "base_rent_not_extracted".to_owned(),
@@ -1220,8 +1675,8 @@ fn required_clause_kinds(profile: ContractProfile) -> &'static [ClauseKind] {
 #[cfg(test)]
 mod tests {
     use super::{
-        analyze_contract, ClauseKind, ContractAnalysisOptions, ContractProfile, EconomicTermKind,
-        ObligationModality,
+        ClauseKind, ContractAnalysisOptions, ContractProfile, EconomicTermKind, ObligationModality,
+        analyze_contract,
     };
 
     #[test]
@@ -1246,18 +1701,24 @@ Tenant shall not assign this Lease without Landlord's prior written consent.
         )
         .expect("analysis");
         assert!(analysis.clause_counts.contains_key(&ClauseKind::BaseRent));
-        assert!(analysis
-            .economic_terms
-            .iter()
-            .any(|term| term.kind == EconomicTermKind::BaseRent));
-        assert!(analysis
-            .economic_terms
-            .iter()
-            .any(|term| term.kind == EconomicTermKind::RentEscalation));
-        assert!(analysis
-            .obligations
-            .iter()
-            .any(|obligation| obligation.modality == ObligationModality::ShallNot));
+        assert!(
+            analysis
+                .economic_terms
+                .iter()
+                .any(|term| term.kind == EconomicTermKind::BaseRent)
+        );
+        assert!(
+            analysis
+                .economic_terms
+                .iter()
+                .any(|term| term.kind == EconomicTermKind::RentEscalation)
+        );
+        assert!(
+            analysis
+                .obligations
+                .iter()
+                .any(|obligation| obligation.modality == ObligationModality::ShallNot)
+        );
     }
 
     #[test]
@@ -1285,10 +1746,17 @@ Recipient shall destroy all copies within 10 days after request.
         )
         .expect("analysis");
         assert!(!analysis.definitions.is_empty());
-        assert!(analysis.clause_counts.contains_key(&ClauseKind::UseRestrictions));
-        assert!(analysis
-            .economic_terms
-            .iter()
-            .any(|term| term.kind == EconomicTermKind::NoticePeriod || term.kind == EconomicTermKind::Duration));
+        assert!(
+            analysis
+                .clause_counts
+                .contains_key(&ClauseKind::UseRestrictions)
+        );
+        assert!(
+            analysis
+                .economic_terms
+                .iter()
+                .any(|term| term.kind == EconomicTermKind::NoticePeriod
+                    || term.kind == EconomicTermKind::Duration)
+        );
     }
 }

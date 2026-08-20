@@ -30,14 +30,10 @@ impl Index {
             .min(1.0);
 
         let maximum_unique_idf = ((document_count as f32 + 1.0) / 2.0).ln() + 1.0;
-        effective.policy.minimum_feature_idf = effective
-            .policy
-            .minimum_feature_idf
-            .min(maximum_unique_idf);
-        effective.search.minimum_feature_idf = effective
-            .search
-            .minimum_feature_idf
-            .min(maximum_unique_idf);
+        effective.policy.minimum_feature_idf =
+            effective.policy.minimum_feature_idf.min(maximum_unique_idf);
+        effective.search.minimum_feature_idf =
+            effective.search.minimum_feature_idf.min(maximum_unique_idf);
         self.search_domain(specimen, &effective)
     }
 }
@@ -120,7 +116,7 @@ mod tests {
             builder
                 .add_document(
                     format!("document-{index}"),
-                    format!("common language unique marker {index} additional evidence"),
+                    &format!("common language unique marker {index} additional evidence"),
                 )
                 .expect("document");
         }

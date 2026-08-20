@@ -249,7 +249,9 @@ fn renders_checksums_claims_metrics_and_examples() {
     let markdown = fs::read_to_string(bundle.join("RESULTS.md")).expect("markdown");
     assert!(markdown.contains("Predeclared claim verdicts"));
     assert!(markdown.contains("supported"));
-    assert!(markdown.contains("largest_hybrid_rank_gain") || markdown.contains("deterministic_first"));
+    assert!(
+        markdown.contains("largest_hybrid_rank_gain") || markdown.contains("deterministic_first")
+    );
     let html = fs::read_to_string(bundle.join("RESULTS.html")).expect("html");
     assert!(html.contains("badge-supported"));
     let artifacts: serde_json::Value =
@@ -267,7 +269,10 @@ fn renders_checksums_claims_metrics_and_examples() {
         .arg(&bundle)
         .output()
         .expect("rerun renderer");
-    assert!(!second.status.success(), "renderer overwrote immutable bundle");
+    assert!(
+        !second.status.success(),
+        "renderer overwrote immutable bundle"
+    );
 
     fs::remove_dir_all(root).ok();
 }
@@ -297,7 +302,7 @@ fn method(
             "macro_average_precision":macro_auprc,
             "mean_reciprocal_rank":mrr,
             "recall_at_k":[{"k":1,"value":recall_at_1},{"k":5,"value":1.0},{"k":10,"value":1.0}],
-            "ndcg_at_k":[{"k":1,"value":recall_at_1},{"k":5,"value":1.0},{"k":10,"value":1.0]
+            "ndcg_at_k":[{"k":1,"value":recall_at_1},{"k":5,"value":1.0},{"k":10,"value":1.0}]
         },
         "profiles":[],
         "timing":{

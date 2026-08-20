@@ -2,9 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    CompositeSearchResult, FoError, Result, SearchResult,
-};
+use crate::{CompositeSearchResult, FoError, Result, SearchResult};
 
 pub const LINEAGE_GRAPH_SCHEMA_VERSION: u32 = 1;
 
@@ -32,6 +30,11 @@ impl LineageSpan {
     #[must_use]
     pub const fn len(self) -> usize {
         self.end.saturating_sub(self.start)
+    }
+
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -357,9 +360,7 @@ impl LineageGraph {
 
     pub fn upsert_edge(&mut self, edge: LineageEdge) -> Result<bool> {
         edge.validate()?;
-        if !self.nodes.contains_key(&edge.source_id)
-            || !self.nodes.contains_key(&edge.target_id)
-        {
+        if !self.nodes.contains_key(&edge.source_id) || !self.nodes.contains_key(&edge.target_id) {
             return Err(FoError::InvalidConfig(format!(
                 "cannot insert lineage edge {} before both endpoint nodes exist",
                 edge.id
@@ -393,12 +394,7 @@ impl LineageGraph {
         relation: LineageRelation,
         evidence: LineageEvidence,
     ) -> Result<bool> {
-        self.upsert_edge(LineageEdge::new(
-            source_id,
-            target_id,
-            relation,
-            evidence,
-        ))
+        self.upsert_edge(LineageEdge::new(source_id, target_id, relation, evidence))
     }
 
     pub fn ancestors(&self, node_id: &str, maximum_depth: usize) -> Result<Vec<LineageVisit>> {
@@ -493,11 +489,7 @@ impl LineageGraph {
             .keys()
             .filter(|node| !self.edges.values().any(|edge| &edge.source_id == *node))
             .count();
-        let evidence_records = self
-            .edges
-            .values()
-            .map(|edge| edge.evidence.len())
-            .sum();
+        let evidence_records = self.edges.values().map(|edge| edge.evidence.len()).sum();
         LineageSummary {
             schema_version: self.schema_version,
             nodes: self.nodes.len(),
@@ -531,17 +523,20 @@ impl LineageGraph {
                 (node, incoming, descendants)
             })
             .collect::<Vec<_>>();
-        candidates.sort_unstable_by(|(left, left_incoming, left_descendants), (right, right_incoming, right_descendants)| {
-            left_incoming
-                .cmp(right_incoming)
-                .then_with(|| {
-                    left.observed_at_unix
-                        .unwrap_or(u64::MAX)
-                        .cmp(&right.observed_at_unix.unwrap_or(u64::MAX))
-                })
-                .then_with(|| right_descendants.cmp(left_descendants))
-                .then_with(|| left.id.cmp(&right.id))
-        });
+        candidates.sort_unstable_by(
+            |(left, left_incoming, left_descendants),
+             (right, right_incoming, right_descendants)| {
+                left_incoming
+                    .cmp(right_incoming)
+                    .then_with(|| {
+                        left.observed_at_unix
+                            .unwrap_or(u64::MAX)
+                            .cmp(&right.observed_at_unix.unwrap_or(u64::MAX))
+                    })
+                    .then_with(|| right_descendants.cmp(left_descendants))
+                    .then_with(|| left.id.cmp(&right.id))
+            },
+        );
         let Some((node, incoming_edges, direct_descendants)) = candidates.first() else {
             return Err(FoError::InvalidConfig(
                 "cannot select a canonical origin from an empty component".to_owned(),
@@ -676,7 +671,10 @@ fn evidence_fingerprint(evidence: &LineageEvidence) -> u64 {
     hash = fnv_extend(hash, &evidence.query_coverage.to_bits().to_le_bytes());
     hash = fnv_extend(hash, &evidence.source_coverage.to_bits().to_le_bytes());
     hash = fnv_extend(hash, &evidence.matched_tokens.to_le_bytes());
-    hash = fnv_extend(hash, &evidence.expected_false_matches.to_bits().to_le_bytes());
+    hash = fnv_extend(
+        hash,
+        &evidence.expected_false_matches.to_bits().to_le_bytes(),
+    );
     hash = fnv_extend(hash, &evidence.detected_at_unix.to_le_bytes());
     for span in evidence.source_spans.iter().chain(&evidence.target_spans) {
         hash = fnv_extend(hash, &span.start.to_le_bytes());
@@ -725,8 +723,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        LineageEdge, LineageEvidence, LineageGraph, LineageNode, LineageRelation,
-        LineageSpan,
+        LineageEdge, LineageEvidence, LineageGraph, LineageNode, LineageRelation, LineageSpan,
     };
 
     fn node(id: &str, observed_at_unix: u64) -> LineageNode {
@@ -788,7 +785,11 @@ mod tests {
 
         graph.validate().expect("valid graph");
         assert_eq!(graph.edges.len(), 2);
-        assert_eq!(graph.edges.values().next().expect("edge").evidence.len(), 2);
+        let ab_edge = graph
+            .edges
+            .get(&super::edge_id("a", "b", LineageRelation::DerivedFrom))
+            .expect("edge a-b");
+        assert_eq!(ab_edge.evidence.len(), 2);
         let ancestors = graph.ancestors("c", 4).expect("ancestors");
         assert_eq!(ancestors.len(), 2);
         assert_eq!(ancestors[0].node_id, "b");
@@ -821,12 +822,7 @@ mod tests {
         let mut graph = LineageGraph::new();
         graph.upsert_node(node("a", 1)).expect("node a");
         graph.upsert_node(node("b", 2)).expect("node b");
-        let edge = LineageEdge::new(
-            "a",
-            "b",
-            LineageRelation::DerivedFrom,
-            evidence(0.8, 10),
-        );
+        let edge = LineageEdge::new("a", "b", LineageRelation::DerivedFrom, evidence(0.8, 10));
         assert!(graph.upsert_edge(edge.clone()).expect("first"));
         assert!(!graph.upsert_edge(edge).expect("duplicate"));
         assert_eq!(graph.edges.values().next().expect("edge").evidence.len(), 1);

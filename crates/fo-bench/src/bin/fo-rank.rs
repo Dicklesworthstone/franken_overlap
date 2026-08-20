@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 use fo_core::{
-    EvaluationOptions, GroupedFeedbackExample, PairwiseRankingOptions, RankingModel,
-    SearchResult, mine_hard_negatives,
+    EvaluationOptions, GroupedFeedbackExample, PairwiseRankingOptions, RankingModel, SearchResult,
+    mine_hard_negatives,
 };
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -202,7 +202,10 @@ fn read_grouped_feedback(path: &Path) -> CliResult<Vec<GroupedFeedbackExample>> 
 }
 
 fn write_grouped_feedback(path: &Path, examples: &[GroupedFeedbackExample]) -> CliResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let file = OpenOptions::new()
@@ -231,7 +234,10 @@ fn write_pretty_json(path: &Path, value: &impl serde::Serialize) -> CliResult<()
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> CliResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let temporary = path.with_extension(format!(

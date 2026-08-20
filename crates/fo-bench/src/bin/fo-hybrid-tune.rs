@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 use fo_core::{
-    GroupedEvaluationOptions, GroupedLabeledScore, HybridFusionProfile, HybridMetricSnapshot,
-    HYBRID_FUSION_PROFILE_SCHEMA_VERSION, grouped_evaluation_report,
+    GroupedEvaluationOptions, GroupedLabeledScore, HYBRID_FUSION_PROFILE_SCHEMA_VERSION,
+    HybridFusionProfile, HybridMetricSnapshot, grouped_evaluation_report,
 };
 use serde::{Deserialize, Serialize};
 
@@ -200,9 +200,7 @@ fn run_fit(command: FitCommand) -> CliResult<()> {
             })
         })
         .collect::<fo_core::Result<Vec<_>>>()?;
-    train_evaluations.sort_unstable_by(|left, right| {
-        compare_candidate_evaluations(right, left)
-    });
+    train_evaluations.sort_unstable_by(|left, right| compare_candidate_evaluations(right, left));
     train_evaluations.truncate(command.shortlist.min(train_evaluations.len()));
     let selected = train_evaluations
         .iter()
@@ -224,7 +222,10 @@ fn run_fit(command: FitCommand) -> CliResult<()> {
     let fingerprint = format!("{:016x}", fnv1a64(&input_bytes));
     let profile = HybridFusionProfile {
         schema_version: HYBRID_FUSION_PROFILE_SCHEMA_VERSION,
-        name: format!("tuned-{}-{}", command.lexical_method, command.overlap_method),
+        name: format!(
+            "tuned-{}-{}",
+            command.lexical_method, command.overlap_method
+        ),
         lexical_weight: selected.parameters.lexical_weight as f32,
         overlap_weight: selected.parameters.overlap_weight as f32,
         rrf_weight: selected.parameters.rrf_weight as f32,
@@ -254,9 +255,9 @@ fn run_fit(command: FitCommand) -> CliResult<()> {
         train_queries: splits.train.len(),
         validation_queries: splits.validation.len(),
         test_queries: splits.test.len(),
-        lexical_method: command.lexical_method,
-        overlap_method: command.overlap_method,
-        baseline_method: command.baseline_method,
+        lexical_method: command.lexical_method.clone(),
+        overlap_method: command.overlap_method.clone(),
+        baseline_method: command.baseline_method.clone(),
         evaluated_configurations: configurations.len(),
         shortlist: train_evaluations.len(),
         selected: selected.parameters,
@@ -343,8 +344,14 @@ fn validate_fit_command(command: &FitCommand) -> CliResult<()> {
         return Err(invalid_input("--shortlist must lie in 1..=10,000"));
     }
     for (name, value) in [
-        ("--require-test-micro-delta", command.require_test_micro_delta),
-        ("--require-test-macro-delta", command.require_test_macro_delta),
+        (
+            "--require-test-micro-delta",
+            command.require_test_micro_delta,
+        ),
+        (
+            "--require-test-macro-delta",
+            command.require_test_macro_delta,
+        ),
         (
             "--require-test-recall-at-1-delta",
             command.require_test_recall_at_1_delta,
@@ -513,10 +520,7 @@ fn query_splits(rows: &[PreparedRow], seed: u64) -> CliResult<QuerySplits> {
         .min(queries.len() - 1);
     Ok(QuerySplits {
         train: queries[..train_end].iter().cloned().collect(),
-        validation: queries[train_end..validation_end]
-            .iter()
-            .cloned()
-            .collect(),
+        validation: queries[train_end..validation_end].iter().cloned().collect(),
         test: queries[validation_end..].iter().cloned().collect(),
     })
 }
@@ -628,13 +632,21 @@ fn compare_candidate_evaluations(
     left.metrics
         .macro_auprc
         .total_cmp(&right.metrics.macro_auprc)
-        .then_with(|| left.metrics.micro_auprc.total_cmp(&right.metrics.micro_auprc))
+        .then_with(|| {
+            left.metrics
+                .micro_auprc
+                .total_cmp(&right.metrics.micro_auprc)
+        })
         .then_with(|| {
             left.metrics
                 .mean_reciprocal_rank
                 .total_cmp(&right.metrics.mean_reciprocal_rank)
         })
-        .then_with(|| left.metrics.recall_at_1.total_cmp(&right.metrics.recall_at_1))
+        .then_with(|| {
+            left.metrics
+                .recall_at_1
+                .total_cmp(&right.metrics.recall_at_1)
+        })
         .then_with(|| {
             right
                 .parameters
@@ -663,7 +675,10 @@ fn write_pretty_json(path: &Path, value: &impl Serialize) -> CliResult<()> {
 }
 
 fn write_grouped_scores(path: &Path, values: &[GroupedLabeledScore]) -> CliResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let temporary = temporary_path(path);
@@ -678,7 +693,10 @@ fn write_grouped_scores(path: &Path, values: &[GroupedLabeledScore]) -> CliResul
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> CliResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let temporary = temporary_path(path);
@@ -710,16 +728,28 @@ fn print_tuning_report(report: &TuningReport, output: &Path) {
         report.train_queries, report.validation_queries, report.test_queries
     );
     println!("Configurations:        {}", report.evaluated_configurations);
-    println!("Lexical weight:        {:.4}", report.selected.lexical_weight);
-    println!("Overlap weight:        {:.4}", report.selected.overlap_weight);
+    println!(
+        "Lexical weight:        {:.4}",
+        report.selected.lexical_weight
+    );
+    println!(
+        "Overlap weight:        {:.4}",
+        report.selected.overlap_weight
+    );
     println!("RRF weight:            {:.4}", report.selected.rrf_weight);
     println!("RRF constant:          {:.1}", report.selected.rrf_constant);
     println!(
         "Validation macro AP:   {:.6}",
         report.validation_metrics.macro_auprc
     );
-    println!("Test micro AP:         {:.6}", report.test_metrics.micro_auprc);
-    println!("Test macro AP:         {:.6}", report.test_metrics.macro_auprc);
+    println!(
+        "Test micro AP:         {:.6}",
+        report.test_metrics.micro_auprc
+    );
+    println!(
+        "Test macro AP:         {:.6}",
+        report.test_metrics.macro_auprc
+    );
     println!("Test micro delta:      {:+.6}", report.test_micro_delta);
     println!("Test macro delta:      {:+.6}", report.test_macro_delta);
     println!(
@@ -754,13 +784,19 @@ fn invalid_input(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{parameter_grid, prepare_rows, query_splits, ScoreRow};
+    use super::{ScoreRow, parameter_grid, prepare_rows, query_splits};
 
     #[test]
     fn parameter_grid_contains_pure_and_mixed_models() {
         let grid = parameter_grid();
-        assert!(grid.iter().any(|parameters| parameters.lexical_weight == 1.0));
-        assert!(grid.iter().any(|parameters| parameters.overlap_weight == 1.0));
+        assert!(
+            grid.iter()
+                .any(|parameters| parameters.lexical_weight == 1.0)
+        );
+        assert!(
+            grid.iter()
+                .any(|parameters| parameters.overlap_weight == 1.0)
+        );
         assert!(grid.iter().any(|parameters| parameters.rrf_weight > 0.0));
     }
 
@@ -775,10 +811,7 @@ mod tests {
                     label: candidate == 0,
                     scores: BTreeMap::from([
                         ("lex".to_owned(), if candidate == 0 { 0.8 } else { 0.2 }),
-                        (
-                            "overlap".to_owned(),
-                            if candidate == 0 { 0.9 } else { 0.1 },
-                        ),
+                        ("overlap".to_owned(), if candidate == 0 { 0.9 } else { 0.1 }),
                         (
                             "baseline".to_owned(),
                             if candidate == 0 { 0.7 } else { 0.3 },
@@ -787,8 +820,7 @@ mod tests {
                 });
             }
         }
-        let prepared =
-            prepare_rows(&rows, "lex", "overlap", Some("baseline")).expect("prepare");
+        let prepared = prepare_rows(&rows, "lex", "overlap", Some("baseline")).expect("prepare");
         let splits = query_splits(&prepared, 7).expect("splits");
         assert_eq!(
             splits.train.len() + splits.validation.len() + splits.test.len(),

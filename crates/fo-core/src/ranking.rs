@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    EvaluationOptions, FoError, LabeledScore, PrecisionRecallReport, Result, SearchIntent,
-    SearchResult, precision_recall_report,
+    EvaluationOptions, FoError, LabeledScore, PrecisionRecallReport, Result, SearchResult,
+    precision_recall_report,
 };
 
 pub const RANKING_FEATURE_COUNT: usize = 14;
@@ -47,9 +47,7 @@ impl PairwiseRankingOptions {
                 "ranking epochs must be between 1 and 1,000,000".to_owned(),
             ));
         }
-        if !self.learning_rate.is_finite()
-            || self.learning_rate <= 0.0
-            || self.learning_rate > 10.0
+        if !self.learning_rate.is_finite() || self.learning_rate <= 0.0 || self.learning_rate > 10.0
         {
             return Err(FoError::InvalidConfig(
                 "ranking learning_rate must be finite and lie in (0, 10]".to_owned(),
@@ -65,9 +63,7 @@ impl PairwiseRankingOptions {
                 "ranking convergence_tolerance must be finite and non-negative".to_owned(),
             ));
         }
-        if self.max_negatives_per_positive == 0
-            || self.max_negatives_per_positive > 1_000_000
-        {
+        if self.max_negatives_per_positive == 0 || self.max_negatives_per_positive > 1_000_000 {
             return Err(FoError::InvalidConfig(
                 "max_negatives_per_positive must be between 1 and 1,000,000".to_owned(),
             ));
@@ -153,15 +149,11 @@ impl RankingModel {
             let mut gradient = [0.0f64; RANKING_FEATURE_COUNT];
             let mut loss = 0.0;
             for pair in &pairs {
-                let difference = subtract(
-                    &standardized[pair.positive],
-                    &standardized[pair.negative],
-                );
+                let difference =
+                    subtract(&standardized[pair.positive], &standardized[pair.negative]);
                 let margin = dot(&weights, &difference);
                 let derivative = -sigmoid(-margin) * pair.weight;
-                for (gradient_value, difference_value) in
-                    gradient.iter_mut().zip(difference)
-                {
+                for (gradient_value, difference_value) in gradient.iter_mut().zip(difference) {
                     *gradient_value += derivative * difference_value;
                 }
                 loss += pair.weight * softplus(-margin);
@@ -169,8 +161,7 @@ impl RankingModel {
             loss /= total_pair_weight;
             loss += 0.5 * options.l2 * weights.iter().map(|weight| weight * weight).sum::<f64>();
 
-            let learning_rate =
-                options.learning_rate / (1.0 + epoch as f64 / 100.0).sqrt();
+            let learning_rate = options.learning_rate / (1.0 + epoch as f64 / 100.0).sqrt();
             for (weight, gradient_value) in weights.iter_mut().zip(gradient) {
                 let regularized = gradient_value / total_pair_weight + options.l2 * *weight;
                 *weight -= learning_rate * regularized;
@@ -392,8 +383,7 @@ pub fn ranking_evidence_vector(result: &SearchResult) -> [f64; RANKING_FEATURE_C
     let vote = f64::from(result.vote_support.clamp(0.0, 1.0));
     let chain = f64::from(result.chain_consistency.clamp(0.0, 1.0));
     let length_factor = 1.0 - (-(result.matched_tokens as f64) / 32.0).exp();
-    let anchor_count_factor =
-        1.0 - (-(result.distinct_anchor_count as f64) / 8.0).exp();
+    let anchor_count_factor = 1.0 - (-(result.distinct_anchor_count as f64) / 8.0).exp();
     let false_match_confidence = 1.0 / (1.0 + result.estimated_false_matches.max(0.0));
     [
         raw,
@@ -475,7 +465,10 @@ fn validate_grouped_feedback(examples: &[GroupedFeedbackExample]) -> Result<()> 
 fn group_indices(examples: &[GroupedFeedbackExample]) -> BTreeMap<&str, Vec<usize>> {
     let mut grouped = BTreeMap::<&str, Vec<usize>>::new();
     for (index, example) in examples.iter().enumerate() {
-        grouped.entry(example.query_id.as_str()).or_default().push(index);
+        grouped
+            .entry(example.query_id.as_str())
+            .or_default()
+            .push(index);
     }
     grouped
 }
@@ -522,9 +515,7 @@ fn hardness(result: &SearchResult) -> f64 {
         + 0.10 * f64::from(result.chain_consistency.clamp(0.0, 1.0))
 }
 
-fn feature_means(
-    rows: &[[f64; RANKING_FEATURE_COUNT]],
-) -> [f64; RANKING_FEATURE_COUNT] {
+fn feature_means(rows: &[[f64; RANKING_FEATURE_COUNT]]) -> [f64; RANKING_FEATURE_COUNT] {
     let mut means = [0.0; RANKING_FEATURE_COUNT];
     for row in rows {
         for (mean, value) in means.iter_mut().zip(row) {
@@ -571,10 +562,7 @@ fn subtract(
     std::array::from_fn(|feature| left[feature] - right[feature])
 }
 
-fn dot(
-    left: &[f64; RANKING_FEATURE_COUNT],
-    right: &[f64; RANKING_FEATURE_COUNT],
-) -> f64 {
+fn dot(left: &[f64; RANKING_FEATURE_COUNT], right: &[f64; RANKING_FEATURE_COUNT]) -> f64 {
     left.iter()
         .zip(right)
         .map(|(left, right)| *left * *right)

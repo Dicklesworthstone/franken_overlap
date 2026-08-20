@@ -9,8 +9,8 @@ use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    atomic_write, sha256_hex, unix_timestamp, CorpusDocument, CorpusError, CorpusFailure,
-    CorpusManifest, CorpusProvider, DownloadClient, HttpOptions, Result,
+    CorpusDocument, CorpusError, CorpusFailure, CorpusManifest, CorpusProvider, DownloadClient,
+    HttpOptions, Result, atomic_write, sha256_hex, unix_timestamp,
 };
 
 pub const GUTENBERG_CATALOG_URL: &str =
@@ -215,22 +215,17 @@ pub fn fetch_gutenberg(options: GutenbergOptions) -> Result<GutenbergFetchReport
 
     for candidate in selected {
         let id = candidate.id.to_string();
-        let relative_path = format!(
-            "documents/{}/pg{}.txt",
-            candidate.id / 1_000,
-            candidate.id
-        );
+        let relative_path = format!("documents/{}/pg{}.txt", candidate.id / 1_000, candidate.id);
         let destination = options.output_dir.join(&relative_path);
-        if !options.overwrite {
-            if let Some(existing) = manifest.document(&id)
-                && destination.is_file()
-            {
-                let bytes =
-                    fs::read(&destination).map_err(|error| CorpusError::io(&destination, error))?;
-                if sha256_hex(&bytes) == existing.sha256 {
-                    reused += 1;
-                    continue;
-                }
+        if !options.overwrite
+            && let Some(existing) = manifest.document(&id)
+            && destination.is_file()
+        {
+            let bytes =
+                fs::read(&destination).map_err(|error| CorpusError::io(&destination, error))?;
+            if sha256_hex(&bytes) == existing.sha256 {
+                reused += 1;
+                continue;
             }
         }
 
@@ -468,7 +463,7 @@ fn nonempty(value: String) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{select_candidates, strip_gutenberg_boilerplate, GutenbergCandidate};
+    use super::{GutenbergCandidate, select_candidates, strip_gutenberg_boilerplate};
 
     #[test]
     fn removes_standard_header_and_footer() {

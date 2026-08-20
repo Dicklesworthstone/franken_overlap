@@ -121,7 +121,8 @@ impl CorpusManifest {
         } else {
             self.documents.push(document);
         }
-        self.documents.sort_unstable_by(|left, right| left.id.cmp(&right.id));
+        self.documents
+            .sort_unstable_by(|left, right| left.id.cmp(&right.id));
         self.updated_at_unix = unix_timestamp();
     }
 
@@ -292,7 +293,10 @@ pub fn unix_timestamp() -> u64 {
 }
 
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent).map_err(|error| CorpusError::io(parent, error))?;
     }
     let mut temporary = path.to_path_buf();

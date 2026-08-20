@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use fo_core::{
-    CompositeSearchResult, HybridOverlapEvidence, HybridSearchReport, LineageEdge,
-    LineageEvidence, LineageGraph, LineageNode, LineageRelation, SearchResult,
+    CompositeSearchResult, HybridOverlapEvidence, HybridSearchReport, LineageEvidence,
+    LineageGraph, LineageNode, LineageRelation, SearchResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -172,6 +172,7 @@ impl From<RelationArg> for LineageRelation {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 enum ResultInput {
     Raw(Vec<SearchResult>),
     Composite(Vec<CompositeSearchResult>),
@@ -264,17 +265,18 @@ fn run_node(command: NodeCommand) -> CliResult<()> {
             }))?
         );
     } else {
-        println!("{} node {}", if changed { "Updated" } else { "Retained" }, command.id);
+        println!(
+            "{} node {}",
+            if changed { "Updated" } else { "Retained" },
+            command.id
+        );
     }
     Ok(())
 }
 
 fn run_ingest(command: IngestCommand) -> CliResult<()> {
     validate_threshold("minimum_score", command.minimum_score)?;
-    validate_threshold(
-        "minimum_query_coverage",
-        command.minimum_query_coverage,
-    )?;
+    validate_threshold("minimum_query_coverage", command.minimum_query_coverage)?;
     let mut graph = load_or_new_graph(&command.graph)?;
     let target_metadata = parse_metadata(&command.target_metadata)?;
     let target_changed = graph.upsert_node(LineageNode {
@@ -282,7 +284,7 @@ fn run_ingest(command: IngestCommand) -> CliResult<()> {
         title: if command.target_title.is_empty() {
             command.target_id.clone()
         } else {
-            command.target_title
+            command.target_title.clone()
         },
         observed_at_unix: command.target_observed_at_unix,
         metadata: target_metadata,
@@ -297,7 +299,7 @@ fn run_ingest(command: IngestCommand) -> CliResult<()> {
 
     match input {
         ResultInput::Raw(results) => {
-            parsed_results = results.len();
+            parsed_results += results.len();
             for result in results {
                 if !retain_raw(&result, &command) {
                     continue;
@@ -319,7 +321,7 @@ fn run_ingest(command: IngestCommand) -> CliResult<()> {
             }
         }
         ResultInput::RawLines(results) => {
-            parsed_results = results.len();
+            parsed_results += results.len();
             for envelope in results {
                 let result = envelope.result;
                 if !retain_raw(&result, &command) {
@@ -342,7 +344,7 @@ fn run_ingest(command: IngestCommand) -> CliResult<()> {
             }
         }
         ResultInput::Composite(results) => {
-            parsed_results = results.len();
+            parsed_results += results.len();
             for result in results {
                 if result.aggregate_score < command.minimum_score
                     || result.query_coverage < command.minimum_query_coverage
@@ -378,19 +380,13 @@ fn run_ingest(command: IngestCommand) -> CliResult<()> {
                         passage.combined_score,
                         passage.query_coverage,
                         passage.matched_tokens,
-                        LineageEvidence::from_search_result(
-                            passage,
-                            command.detected_at_unix,
-                        ),
+                        LineageEvidence::from_search_result(passage, command.detected_at_unix),
                     ),
                     HybridOverlapEvidence::Composite(ref composite) => (
                         composite.aggregate_score,
                         composite.query_coverage,
                         composite.matched_tokens,
-                        LineageEvidence::from_composite_result(
-                            composite,
-                            command.detected_at_unix,
-                        ),
+                        LineageEvidence::from_composite_result(composite, command.detected_at_unix),
                     ),
                 };
                 if score < command.minimum_score
@@ -442,7 +438,10 @@ fn run_ingest(command: IngestCommand) -> CliResult<()> {
             "Skipped lexical-only hits: {}",
             report.skipped_without_overlap_evidence
         );
-        println!("Total nodes / edges:      {} / {}", report.summary.nodes, report.summary.edges);
+        println!(
+            "Total nodes / edges:      {} / {}",
+            report.summary.nodes, report.summary.edges
+        );
     }
     Ok(())
 }
@@ -471,7 +470,10 @@ fn run_merge(command: MergeCommand) -> CliResult<()> {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         println!("Merged {} into {}", report.source_graph, report.graph);
-        println!("Changed nodes / edges: {} / {}", changed_nodes, changed_edges);
+        println!(
+            "Changed nodes / edges: {} / {}",
+            changed_nodes, changed_edges
+        );
     }
     Ok(())
 }
@@ -591,9 +593,8 @@ fn read_result_input(path: &Path) -> CliResult<ResultInput> {
         if value.is_empty() || value.starts_with('#') {
             continue;
         }
-        let result = serde_json::from_str::<SearchResult>(value).map_err(|error| {
-            invalid(format!("{}:{}: {error}", path.display(), line_index + 1))
-        })?;
+        let result = serde_json::from_str::<SearchResult>(value)
+            .map_err(|error| invalid(format!("{}:{}: {error}", path.display(), line_index + 1)))?;
         envelopes.push(RawResultEnvelope { result });
     }
     if envelopes.is_empty() {
@@ -669,7 +670,9 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> CliResult<()> {
     }
     let temporary = path.with_extension(format!(
         "{}.tmp-{}",
-        path.extension().and_then(|value| value.to_str()).unwrap_or("json"),
+        path.extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("json"),
         std::process::id()
     ));
     {

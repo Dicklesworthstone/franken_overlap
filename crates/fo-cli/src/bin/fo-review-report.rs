@@ -10,8 +10,10 @@ use fo_core::{
     CompositeSearchResult, HybridOverlapEvidence, HybridSearchReport, NormalizationProfile,
     SearchResult, SemanticFusionReport, SemanticRelationshipClass, normalize_with_provenance,
 };
-use fo_corpus::{CorpusDocument, CorpusManifest, MANIFEST_FILENAME, atomic_write, sha256_hex, unix_timestamp};
-use serde::{Deserialize, Serialize};
+use fo_corpus::{
+    CorpusDocument, CorpusManifest, MANIFEST_FILENAME, atomic_write, sha256_hex, unix_timestamp,
+};
+use serde::Serialize;
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -209,7 +211,7 @@ fn run() -> CliResult<()> {
     let specimen_provenance = normalize_with_provenance(&specimen, &normalization_profile);
     let candidates = candidate_evidence(parsed);
     let mut review_candidates = Vec::new();
-    for (rank, candidate) in candidates
+    for (rank, mut candidate) in candidates
         .into_iter()
         .take(command.maximum_candidates)
         .enumerate()
@@ -237,12 +239,14 @@ fn run() -> CliResult<()> {
                 document.id
             )));
         }
-        let source = String::from_utf8(source_bytes).map_err(|error| {
-            invalid(format!("source {} is not UTF-8: {error}", document.id))
-        })?;
+        let source = String::from_utf8(source_bytes)
+            .map_err(|error| invalid(format!("source {} is not UTF-8: {error}", document.id)))?;
         let source_provenance = normalize_with_provenance(&source, &normalization_profile);
         let mut blocks = Vec::new();
-        for (block_index, block) in candidate.blocks.into_iter().enumerate() {
+        for (block_index, block) in std::mem::take(&mut candidate.blocks)
+            .into_iter()
+            .enumerate()
+        {
             if block.query_start >= block.query_end
                 || block.source_start >= block.source_end
                 || block.query_end > specimen_provenance.len()
@@ -298,12 +302,7 @@ fn run() -> CliResult<()> {
                 )?,
             });
         }
-        review_candidates.push(review_candidate(
-            rank + 1,
-            candidate,
-            document,
-            blocks,
-        ));
+        review_candidates.push(review_candidate(rank + 1, candidate, document, blocks));
     }
 
     let report = ReviewReport {
@@ -327,10 +326,7 @@ fn run() -> CliResult<()> {
     let decisions_path = command.output.join("decisions.jsonl");
     let html_path = command.output.join("index.html");
     atomic_write(&review_path, &serde_json::to_vec_pretty(&report)?)?;
-    atomic_write(
-        &decisions_path,
-        &decision_templates(&report, &target_id)?,
-    )?;
+    atomic_write(&decisions_path, &decision_templates(&report, &target_id)?)?;
     atomic_write(&html_path, render_html(&report)?.as_bytes())?;
     let artifact_manifest = artifact_manifest(
         &command.output,
@@ -413,14 +409,10 @@ fn parse_results(bytes: &[u8]) -> CliResult<ParsedResults> {
 
 fn candidate_evidence(results: ParsedResults) -> Vec<CandidateEvidence> {
     match results {
-        ParsedResults::Raw(results) => results
-            .into_iter()
-            .map(candidate_from_raw)
-            .collect(),
-        ParsedResults::Composite(results) => results
-            .into_iter()
-            .map(candidate_from_composite)
-            .collect(),
+        ParsedResults::Raw(results) => results.into_iter().map(candidate_from_raw).collect(),
+        ParsedResults::Composite(results) => {
+            results.into_iter().map(candidate_from_composite).collect()
+        }
         ParsedResults::Hybrid(report) => report
             .results
             .into_iter()
@@ -613,7 +605,10 @@ fn highlighted_context(
     end: usize,
     context_characters: usize,
 ) -> CliResult<String> {
-    if start >= end || end > text.len() || !text.is_char_boundary(start) || !text.is_char_boundary(end)
+    if start >= end
+        || end > text.len()
+        || !text.is_char_boundary(start)
+        || !text.is_char_boundary(end)
     {
         return Err(invalid("highlight byte range is invalid"));
     }

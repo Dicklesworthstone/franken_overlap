@@ -114,14 +114,11 @@ fn benchmarks_identical_realistic_scenarios_across_all_methods() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let report: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse report");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse report");
     assert_eq!(report["queries"], 2);
     assert_eq!(report["evaluated_corpus_sizes"][0], 3);
     assert_eq!(report["scales"][0]["exhaustive"]["complete"], true);
-    let methods = report["scales"][0]["methods"]
-        .as_array()
-        .expect("methods");
+    let methods = report["scales"][0]["methods"].as_array().expect("methods");
     for expected in [
         "normalized_exact_substring",
         "character_qgram_jaccard",
@@ -134,7 +131,13 @@ fn benchmarks_identical_realistic_scenarios_across_all_methods() {
         assert!(methods.iter().any(|method| method["name"] == expected));
     }
     assert!(report_path.is_file());
-    assert_eq!(fs::read_to_string(scores_path).expect("scores").lines().count(), 6);
+    assert_eq!(
+        fs::read_to_string(scores_path)
+            .expect("scores")
+            .lines()
+            .count(),
+        6
+    );
 
     fs::remove_dir_all(root).ok();
 }

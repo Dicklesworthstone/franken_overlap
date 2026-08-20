@@ -123,8 +123,7 @@ pub fn precision_recall_report(
             }
         }
         let false_negatives = positives - true_positives;
-        let precision = true_positives as f64
-            / (true_positives + false_positives).max(1) as f64;
+        let precision = true_positives as f64 / (true_positives + false_positives).max(1) as f64;
         let recall = true_positives as f64 / positives as f64;
         let f1 = if precision + recall > 0.0 {
             2.0 * precision * recall / (precision + recall)
@@ -217,10 +216,7 @@ fn calibration_error(examples: &[LabeledScore], bins: usize) -> (f64, f64) {
     (expected, maximum)
 }
 
-fn downsample_curve(
-    curve: Vec<PrecisionRecallPoint>,
-    maximum: usize,
-) -> Vec<PrecisionRecallPoint> {
+fn downsample_curve(curve: Vec<PrecisionRecallPoint>, maximum: usize) -> Vec<PrecisionRecallPoint> {
     if curve.len() <= maximum {
         return curve;
     }
@@ -300,11 +296,8 @@ mod tests {
 
     #[test]
     fn rejects_non_probability_scores() {
-        let error = precision_recall_report(
-            &[example(1.2, true)],
-            EvaluationOptions::default(),
-        )
-        .expect_err("must reject");
+        let error = precision_recall_report(&[example(1.2, true)], EvaluationOptions::default())
+            .expect_err("must reject");
         assert!(error.to_string().contains("[0, 1]"));
     }
 }

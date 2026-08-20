@@ -148,8 +148,14 @@ fn run_fit(command: FitCommand) -> CliResult<()> {
 
 fn run_compare(command: CompareCommand) -> CliResult<()> {
     for (name, value) in [
-        ("--require-micro-auprc-delta", command.require_micro_auprc_delta),
-        ("--require-macro-auprc-delta", command.require_macro_auprc_delta),
+        (
+            "--require-micro-auprc-delta",
+            command.require_micro_auprc_delta,
+        ),
+        (
+            "--require-macro-auprc-delta",
+            command.require_macro_auprc_delta,
+        ),
         ("--require-mrr-delta", command.require_mrr_delta),
         (
             "--require-recall-at-1-delta",
@@ -254,7 +260,7 @@ fn read_model(path: &Path) -> CliResult<ApRankingModel> {
 fn evaluation_options(samples: usize, seed: u64) -> GroupedEvaluationOptions {
     GroupedEvaluationOptions {
         bootstrap_samples: samples,
-        bootstrap_seed: seed,
+        seed,
         ..GroupedEvaluationOptions::default()
     }
 }
@@ -268,7 +274,10 @@ fn print_comparison(comparison: &ApRankingComparison) {
         "Ranked micro AUPRC:    {:.6}",
         comparison.ranked.micro.average_precision
     );
-    println!("Micro AUPRC delta:      {:+.6}", comparison.micro_auprc_delta);
+    println!(
+        "Micro AUPRC delta:      {:+.6}",
+        comparison.micro_auprc_delta
+    );
     println!(
         "Raw macro AUPRC:       {:.6}",
         comparison.raw.macro_average_precision
@@ -277,12 +286,18 @@ fn print_comparison(comparison: &ApRankingComparison) {
         "Ranked macro AUPRC:    {:.6}",
         comparison.ranked.macro_average_precision
     );
-    println!("Macro AUPRC delta:      {:+.6}", comparison.macro_auprc_delta);
+    println!(
+        "Macro AUPRC delta:      {:+.6}",
+        comparison.macro_auprc_delta
+    );
     println!(
         "MRR delta:              {:+.6}",
         comparison.mean_reciprocal_rank_delta
     );
-    println!("Recall@1 delta:         {:+.6}", comparison.recall_at_1_delta);
+    println!(
+        "Recall@1 delta:         {:+.6}",
+        comparison.recall_at_1_delta
+    );
 }
 
 fn atomic_write_json(path: &Path, value: &impl serde::Serialize) -> CliResult<()> {
@@ -290,7 +305,10 @@ fn atomic_write_json(path: &Path, value: &impl serde::Serialize) -> CliResult<()
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> CliResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let temporary = temporary_path(path);

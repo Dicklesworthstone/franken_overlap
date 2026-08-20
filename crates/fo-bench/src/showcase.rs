@@ -1,10 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs;
 use std::path::{Component, Path};
 
 use fo_corpus::{
-    atomic_write, sha256_hex, unix_timestamp, CorpusDocument, CorpusManifest, CorpusProvider,
+    CorpusDocument, CorpusManifest, CorpusProvider, atomic_write, sha256_hex, unix_timestamp,
 };
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
@@ -15,8 +15,8 @@ pub const SHOWCASE_SCHEMA_VERSION: u32 = 1;
 pub const MAX_SCENARIO_PROFILES: usize = 8;
 
 const NOISE_WORDS: &[&str] = &[
-    "lantern", "railway", "orchard", "ceramic", "violet", "meadow", "saffron", "cabinet",
-    "marble", "festival", "chimney", "harbor", "compass", "velvet", "kitchen", "weather",
+    "lantern", "railway", "orchard", "ceramic", "violet", "meadow", "saffron", "cabinet", "marble",
+    "festival", "chimney", "harbor", "compass", "velvet", "kitchen", "weather",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -157,11 +157,13 @@ pub fn generate_scenarios(
     }
     let profiles = counts
         .into_iter()
-        .map(|(profile, (queries, multi_positive_queries))| ScenarioProfileCount {
-            profile,
-            queries,
-            multi_positive_queries,
-        })
+        .map(
+            |(profile, (queries, multi_positive_queries))| ScenarioProfileCount {
+                profile,
+                queries,
+                multi_positive_queries,
+            },
+        )
         .collect::<Vec<_>>();
     let multi_positive_queries = queries
         .iter()
@@ -295,11 +297,7 @@ fn generate_document_queries(
     let start = if windows <= 1 {
         0
     } else {
-        stable_hash(
-            &document.record.id,
-            options.seed ^ 0x50_41_53_53_41_47_45,
-        ) as usize
-            % windows
+        stable_hash(&document.record.id, options.seed ^ 0x50_41_53_53_41_47_45) as usize % windows
     };
     let passage = document.words[start..start + width].to_vec();
     let profiles = [
@@ -313,11 +311,7 @@ fn generate_document_queries(
         "natural_relation",
     ];
     let mut output = Vec::new();
-    for (profile_index, profile) in profiles
-        .iter()
-        .take(options.queries_per_source)
-        .enumerate()
-    {
+    for (profile_index, profile) in profiles.iter().take(options.queries_per_source).enumerate() {
         let seed = stable_hash(
             &document.record.id,
             options.seed ^ profile_index as u64 ^ 0x51_55_45_52_59,
@@ -345,7 +339,14 @@ fn generate_document_queries(
         metadata.insert("provider".to_owned(), provider_name(provider).to_owned());
         metadata.insert("passage_start_word".to_owned(), start.to_string());
         metadata.insert("passage_words".to_owned(), width.to_string());
-        for key in ["section_title", "parent_id", "form", "cik", "family_id", "document_type"] {
+        for key in [
+            "section_title",
+            "parent_id",
+            "form",
+            "cik",
+            "family_id",
+            "document_type",
+        ] {
             if let Some(value) = document.record.metadata.get(key) {
                 metadata.insert(key.to_owned(), value.clone());
             }
@@ -507,11 +508,15 @@ fn invalid(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::{format_drift, insertion_deletion, ocr_noise, reordered, substitute_words};
 
     #[test]
     fn mutations_are_deterministic_and_nonempty() {
-        let words = (0..120).map(|index| format!("word{index}")).collect::<Vec<_>>();
+        let words = (0..120)
+            .map(|index| format!("word{index}"))
+            .collect::<Vec<_>>();
         assert_eq!(substitute_words(&words, 7), substitute_words(&words, 7));
         assert_ne!(format_drift(&words), words.join(" "));
         assert_ne!(insertion_deletion(&words, 9), words.join(" "));

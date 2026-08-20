@@ -6,8 +6,8 @@ use std::time::Duration;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
-    atomic_write, sha256_hex, unix_timestamp, CorpusDocument, CorpusError, CorpusFailure,
-    CorpusManifest, CorpusProvider, DownloadClient, HttpOptions, Result,
+    CorpusDocument, CorpusError, CorpusFailure, CorpusManifest, CorpusProvider, DownloadClient,
+    HttpOptions, Result, atomic_write, sha256_hex, unix_timestamp,
 };
 
 pub const SEC_TICKERS_URL: &str = "https://www.sec.gov/files/company_tickers.json";
@@ -113,9 +113,7 @@ impl Sec10KOptions {
             if let Some(date) = date
                 && !valid_iso_date(date)
             {
-                return Err(CorpusError::Invalid(format!(
-                    "{name} must use YYYY-MM-DD"
-                )));
+                return Err(CorpusError::Invalid(format!("{name} must use YYYY-MM-DD")));
             }
         }
         if self
@@ -332,16 +330,15 @@ pub fn fetch_sec_10k(options: Sec10KOptions) -> Result<Sec10KFetchReport> {
                 sanitize_component(&filing.accession_number)
             );
             let destination = options.output_dir.join(&relative_path);
-            if !options.overwrite {
-                if let Some(existing) = manifest.document(&id)
-                    && destination.is_file()
-                {
-                    let bytes = fs::read(&destination)
-                        .map_err(|error| CorpusError::io(&destination, error))?;
-                    if sha256_hex(&bytes) == existing.sha256 {
-                        reused += 1;
-                        continue;
-                    }
+            if !options.overwrite
+                && let Some(existing) = manifest.document(&id)
+                && destination.is_file()
+            {
+                let bytes =
+                    fs::read(&destination).map_err(|error| CorpusError::io(&destination, error))?;
+                if sha256_hex(&bytes) == existing.sha256 {
+                    reused += 1;
+                    continue;
                 }
             }
 
@@ -430,9 +427,9 @@ fn select_companies(
     let mut selected = BTreeMap::<u64, (String, Option<String>)>::new();
     for ticker in &options.tickers {
         let normalized = ticker.trim().to_ascii_uppercase();
-        let row = by_ticker
-            .get(&normalized)
-            .ok_or_else(|| CorpusError::Invalid(format!("SEC ticker {normalized} was not found")))?;
+        let row = by_ticker.get(&normalized).ok_or_else(|| {
+            CorpusError::Invalid(format!("SEC ticker {normalized} was not found"))
+        })?;
         selected.insert(row.cik_str, (row.title.clone(), Some(row.ticker.clone())));
     }
     for &cik in &options.ciks {
@@ -495,10 +492,7 @@ fn select_filings(
             .from_date
             .as_ref()
             .is_some_and(|from| filing_date < from)
-            || options
-                .to_date
-                .as_ref()
-                .is_some_and(|to| filing_date > to)
+            || options.to_date.as_ref().is_some_and(|to| filing_date > to)
         {
             continue;
         }
@@ -533,15 +527,13 @@ fn select_filings(
 
 fn filing_to_text(bytes: &[u8]) -> Result<String> {
     let source = String::from_utf8_lossy(bytes);
-    let looks_like_html = source
-        .get(..source.len().min(4_096))
-        .is_some_and(|prefix| {
-            let lowercase = prefix.to_ascii_lowercase();
-            lowercase.contains("<html")
-                || lowercase.contains("<body")
-                || lowercase.contains("<table")
-                || lowercase.contains("<div")
-        });
+    let looks_like_html = source.get(..source.len().min(4_096)).is_some_and(|prefix| {
+        let lowercase = prefix.to_ascii_lowercase();
+        lowercase.contains("<html")
+            || lowercase.contains("<body")
+            || lowercase.contains("<table")
+            || lowercase.contains("<div")
+    });
     let extracted = if looks_like_html {
         html2text::from_read(bytes, 160).map_err(|error| CorpusError::Html(error.to_string()))?
     } else {
@@ -604,9 +596,7 @@ fn stable_mix(mut value: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use serde::Deserialize;
-
-    use super::{clean_filing_text, valid_iso_date, SecSubmission};
+    use super::{SecSubmission, clean_filing_text, valid_iso_date};
 
     #[test]
     fn validates_iso_dates() {

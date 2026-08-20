@@ -99,7 +99,9 @@ pub fn chain_anchors(mut anchors: Vec<Anchor>, options: &ChainOptions) -> Option
                 continue;
             }
             let drift = query_gap.abs_diff(corpus_gap) as f32;
-            let long_gap = query_gap.max(corpus_gap).saturating_sub(u32::from(left.span));
+            let long_gap = query_gap
+                .max(corpus_gap)
+                .saturating_sub(u32::from(left.span));
             let penalty = drift * options.drift_penalty
                 + (1.0 + long_gap as f32 / 32.0).ln() * options.gap_penalty;
             let candidate = scores[predecessor] + right.weight - penalty;
@@ -179,10 +181,30 @@ mod tests {
     #[test]
     fn chains_across_a_small_insertion() {
         let anchors = vec![
-            Anchor { query_position: 0, corpus_position: 100, span: 7, weight: 2.0 },
-            Anchor { query_position: 20, corpus_position: 120, span: 7, weight: 2.0 },
-            Anchor { query_position: 40, corpus_position: 145, span: 7, weight: 2.0 },
-            Anchor { query_position: 8, corpus_position: 900, span: 7, weight: 0.5 },
+            Anchor {
+                query_position: 0,
+                corpus_position: 100,
+                span: 7,
+                weight: 2.0,
+            },
+            Anchor {
+                query_position: 20,
+                corpus_position: 120,
+                span: 7,
+                weight: 2.0,
+            },
+            Anchor {
+                query_position: 40,
+                corpus_position: 145,
+                span: 7,
+                weight: 2.0,
+            },
+            Anchor {
+                query_position: 8,
+                corpus_position: 900,
+                span: 7,
+                weight: 0.5,
+            },
         ];
         let chain = chain_anchors(anchors, &ChainOptions::default()).expect("chain");
         assert_eq!(chain.anchors.len(), 3);

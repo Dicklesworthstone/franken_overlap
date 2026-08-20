@@ -117,17 +117,20 @@ fn supports_a_uniformly_better_challenger_with_familywise_bootstrap() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let report: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("report");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("report");
     assert_eq!(report["all_supported"], true);
     assert_eq!(report["comparisons"][0]["verdict"], "supported");
     assert_eq!(report["comparisons"][0]["eligible_queries"], 6);
-    assert!(report["comparisons"][0]["delta"]["macro_auprc"]
-        .as_f64()
-        .is_some_and(|delta| delta >= 0.49));
-    assert!(report["comparisons"][0]["bootstrap"]["macro_auprc"]["lower"]
-        .as_f64()
-        .is_some_and(|lower| lower >= 0.49));
+    assert!(
+        report["comparisons"][0]["delta"]["macro_auprc"]
+            .as_f64()
+            .is_some_and(|delta| delta >= 0.49)
+    );
+    assert!(
+        report["comparisons"][0]["bootstrap"]["macro_auprc"]["lower"]
+            .as_f64()
+            .is_some_and(|lower| lower >= 0.49)
+    );
 
     fs::remove_dir_all(root).ok();
 }

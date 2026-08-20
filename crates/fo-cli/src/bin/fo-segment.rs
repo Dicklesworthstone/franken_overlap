@@ -6,9 +6,7 @@ use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use fo_core::{
-    IndexConfig, SearchIntent, SearchOptions, SegmentDocumentInput, SegmentedIndex,
-};
+use fo_core::{IndexConfig, SearchIntent, SearchOptions, SegmentDocumentInput, SegmentedIndex};
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -282,10 +280,7 @@ fn run_verify(command: IndexCommand) -> CliResult<()> {
     } else {
         println!("Generation:        {}", report.generation);
         println!("Verified segments: {}", report.verified_segments);
-        println!(
-            "Active documents:  {}",
-            report.verified_active_documents
-        );
+        println!("Active documents:  {}", report.verified_active_documents);
         println!("Segment bytes:     {}", report.file_bytes);
     }
     Ok(())

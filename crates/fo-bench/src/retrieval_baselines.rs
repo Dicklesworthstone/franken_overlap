@@ -1,9 +1,7 @@
 use std::collections::BTreeSet;
 use std::error::Error;
 
-use fo_core::{
-    Fingerprint, NormalizationProfile, NormalizedText, normalize, qgram_hashes,
-};
+use fo_core::{Fingerprint, NormalizationProfile, NormalizedText, normalize, qgram_hashes};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -115,11 +113,6 @@ impl PreparedBaselines {
     }
 
     #[must_use]
-    pub fn documents(&self) -> &[PreparedBaselineDocument] {
-        &self.documents
-    }
-
-    #[must_use]
     pub fn normalize_query(&self, query: &str) -> NormalizedText {
         normalize(query, &self.profile)
     }
@@ -139,10 +132,7 @@ impl PreparedBaselines {
             .collect()
     }
 
-    pub fn jaccard_scores(
-        &self,
-        normalized_query: &NormalizedText,
-    ) -> BaselineResult<Vec<f64>> {
+    pub fn jaccard_scores(&self, normalized_query: &NormalizedText) -> BaselineResult<Vec<f64>> {
         let query = fingerprint_set(&normalized_query.tokens, self.qgram_size)?;
         Ok(self
             .documents
@@ -151,18 +141,13 @@ impl PreparedBaselines {
             .collect())
     }
 
-    pub fn simhash_scores(
-        &self,
-        normalized_query: &NormalizedText,
-    ) -> BaselineResult<Vec<f64>> {
+    pub fn simhash_scores(&self, normalized_query: &NormalizedText) -> BaselineResult<Vec<f64>> {
         let query = fingerprint_set(&normalized_query.tokens, self.qgram_size)?;
         let query_hash = simhash(&query);
         Ok(self
             .documents
             .iter()
-            .map(|document| {
-                1.0 - f64::from((query_hash ^ document.simhash).count_ones()) / 64.0
-            })
+            .map(|document| 1.0 - f64::from((query_hash ^ document.simhash).count_ones()) / 64.0)
             .collect())
     }
 
@@ -182,10 +167,8 @@ impl PreparedBaselines {
                 skipped_documents += 1;
                 continue;
             }
-            let alignment = exhaustive_semi_global(
-                &normalized_query.tokens,
-                &document.normalized.tokens,
-            )?;
+            let alignment =
+                exhaustive_semi_global(&normalized_query.tokens, &document.normalized.tokens)?;
             debug_assert_eq!(alignment.cells, required);
             cells = cells.saturating_add(required);
             evaluated_documents += 1;
@@ -410,8 +393,7 @@ fn better_transition(left: Cell, right: Cell, end: usize) -> Cell {
     if left.cost < right.cost
         || left.cost == right.cost
             && (span_length(left, end) > span_length(right, end)
-                || span_length(left, end) == span_length(right, end)
-                    && left.start < right.start)
+                || span_length(left, end) == span_length(right, end) && left.start < right.start)
     {
         left
     } else {
@@ -461,8 +443,7 @@ mod tests {
 
     #[test]
     fn exhaustive_alignment_finds_an_exact_infix() {
-        let alignment = exhaustive_semi_global(&[2, 3, 4], &[0, 1, 2, 3, 4, 5])
-            .expect("alignment");
+        let alignment = exhaustive_semi_global(&[2, 3, 4], &[0, 1, 2, 3, 4, 5]).expect("alignment");
         assert_eq!(alignment.distance, 0);
         assert_eq!((alignment.text_start, alignment.text_end), (2, 5));
     }
@@ -470,8 +451,7 @@ mod tests {
     #[test]
     fn expected_word_span_maps_into_normalized_coordinates() {
         let text = "zero one two three four";
-        let span = expected_token_span(text, 1, 3, &NormalizationProfile::default())
-            .expect("span");
+        let span = expected_token_span(text, 1, 3, &NormalizationProfile::default()).expect("span");
         assert!(span.start > 0);
         assert!(span.end > span.start);
     }

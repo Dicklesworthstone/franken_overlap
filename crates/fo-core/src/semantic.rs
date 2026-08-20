@@ -150,9 +150,7 @@ impl SemanticFusionOptions {
                 "at least one semantic fusion weight must be positive".to_owned(),
             ));
         }
-        if !self.reciprocal_rank_constant.is_finite()
-            || self.reciprocal_rank_constant <= 0.0
-        {
+        if !self.reciprocal_rank_constant.is_finite() || self.reciprocal_rank_constant <= 0.0 {
             return Err(FoError::InvalidConfig(
                 "semantic reciprocal_rank_constant must be positive".to_owned(),
             ));
@@ -228,10 +226,8 @@ pub fn fuse_semantic_candidates(
 
     let mut candidates = BTreeMap::<String, Candidate>::new();
     for (rank, result) in hybrid.results.iter().cloned().enumerate() {
-        candidates
-            .entry(result.external_id.clone())
-            .or_default()
-            .hybrid = Some((rank + 1, result));
+        let key = result.external_id.clone();
+        candidates.entry(key).or_default().hybrid = Some((rank + 1, result));
     }
 
     let mut semantic_ranked = semantic
@@ -289,11 +285,8 @@ pub fn fuse_semantic_candidates(
             .as_ref()
             .map_or(0.0, |(_, result)| result.score.clamp(0.0, 1.0));
         let semantic_score = aggregate_semantic_score(&candidate.semantic);
-        let reciprocal_rank_score = reciprocal_rank_fusion(
-            hybrid_rank,
-            semantic_rank,
-            options.reciprocal_rank_constant,
-        );
+        let reciprocal_rank_score =
+            reciprocal_rank_fusion(hybrid_rank, semantic_rank, options.reciprocal_rank_constant);
         let agreement = candidate.hybrid.is_some() && !candidate.semantic.is_empty();
         let hybrid_component = if candidate.hybrid.is_some() {
             options.hybrid_weight
@@ -305,8 +298,7 @@ pub fn fuse_semantic_candidates(
         } else {
             options.semantic_weight
         };
-        let active_weight =
-            hybrid_component + semantic_component + options.reciprocal_rank_weight;
+        let active_weight = hybrid_component + semantic_component + options.reciprocal_rank_weight;
         let weighted = options.hybrid_weight * hybrid_score
             + options.semantic_weight * semantic_score
             + options.reciprocal_rank_weight * reciprocal_rank_score;
@@ -321,9 +313,8 @@ pub fn fuse_semantic_candidates(
             0.0
         };
         let final_score = (1.0
-            - (1.0 - base_score.clamp(0.0, 1.0))
-                * (1.0 - agreement_bonus.clamp(0.0, 0.75)))
-            .clamp(0.0, 1.0);
+            - (1.0 - base_score.clamp(0.0, 1.0)) * (1.0 - agreement_bonus.clamp(0.0, 0.75)))
+        .clamp(0.0, 1.0);
         if final_score < options.minimum_score {
             continue;
         }
@@ -427,9 +418,8 @@ fn aggregate_semantic_score(evidence: &[(usize, SemanticEvidence)]) -> f32 {
 }
 
 fn reciprocal_rank_fusion(left: Option<usize>, right: Option<usize>, constant: f32) -> f32 {
-    let contribution = |rank: Option<usize>| {
-        rank.map_or(0.0, |rank| 1.0 / (constant + rank as f32))
-    };
+    let contribution =
+        |rank: Option<usize>| rank.map_or(0.0, |rank| 1.0 / (constant + rank as f32));
     let maximum = 2.0 / (constant + 1.0);
     if maximum <= 0.0 {
         0.0
@@ -447,12 +437,10 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        SemanticCandidateSet, SemanticEvidence, SemanticFusionOptions,
-        SemanticRelationshipClass, fuse_semantic_candidates,
+        SemanticCandidateSet, SemanticEvidence, SemanticFusionOptions, SemanticRelationshipClass,
+        fuse_semantic_candidates,
     };
-    use crate::{
-        HybridQueryMode, HybridScoreExplanation, HybridSearchReport, HybridSearchResult,
-    };
+    use crate::{HybridQueryMode, HybridScoreExplanation, HybridSearchReport, HybridSearchResult};
 
     fn hybrid_result(id: &str, score: f32, overlap: bool) -> HybridSearchResult {
         HybridSearchResult {
@@ -542,12 +530,8 @@ mod tests {
             query_id: Some("q".to_owned()),
             candidates: vec![semantic("textual", 0.90), semantic("semantic-only", 0.99)],
         };
-        let fused = fuse_semantic_candidates(
-            &hybrid,
-            &semantic,
-            &SemanticFusionOptions::default(),
-        )
-        .expect("fuse");
+        let fused = fuse_semantic_candidates(&hybrid, &semantic, &SemanticFusionOptions::default())
+            .expect("fuse");
         assert_eq!(fused.results.len(), 2);
         assert_eq!(fused.results[0].external_id, "textual");
         assert!(fused.results[0].textual_provenance_supported);

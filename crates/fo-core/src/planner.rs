@@ -62,7 +62,10 @@ impl QueryPlannerOptions {
             ));
         }
         for (name, value) in [
-            ("composite_retained_fraction", self.composite_retained_fraction),
+            (
+                "composite_retained_fraction",
+                self.composite_retained_fraction,
+            ),
             (
                 "composite_repetition_fraction",
                 self.composite_repetition_fraction,
@@ -207,8 +210,7 @@ impl Index {
         let short = query.len() < self.config.qgram_size
             || selected_count < search.minimum_anchor_hits as usize;
         let insufficient_sparse_evidence = retained_features < search.minimum_anchor_hits as usize;
-        let sparse_budget_exceeded =
-            estimated_posting_pairs > planner.maximum_sparse_posting_pairs;
+        let sparse_budget_exceeded = estimated_posting_pairs > planner.maximum_sparse_posting_pairs;
         let composite_signal = search.intent != SearchIntent::AnyPassage
             && query.len() >= planner.composite_minimum_tokens
             && (retained_fraction <= f64::from(planner.composite_retained_fraction)

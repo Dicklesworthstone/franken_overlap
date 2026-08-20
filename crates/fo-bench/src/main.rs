@@ -373,13 +373,13 @@ fn read_model(path: &Path) -> CliResult<CalibrationModel> {
     Ok(model)
 }
 
-fn write_calibrated_results(
-    results: &[CalibratedResult],
-    output: Option<&Path>,
-) -> CliResult<()> {
+fn write_calibrated_results(results: &[CalibratedResult], output: Option<&Path>) -> CliResult<()> {
     let bytes = serde_json::to_vec_pretty(results)?;
     if let Some(path) = output {
-        if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
             fs::create_dir_all(parent)?;
         }
         fs::write(path, bytes)?;

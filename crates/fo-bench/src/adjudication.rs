@@ -133,7 +133,9 @@ impl Default for QueueOptions {
 impl QueueOptions {
     pub fn validate(&self) -> AdjudicationResult<()> {
         if self.top_candidates == 0 || self.hybrid_top_k == 0 || self.snippet_tokens == 0 {
-            return Err(invalid("queue candidate, rank, and snippet limits must be positive"));
+            return Err(invalid(
+                "queue candidate, rank, and snippet limits must be positive",
+            ));
         }
         if !self.low_margin.is_finite() || self.low_margin < 0.0 || self.low_margin > 1.0 {
             return Err(invalid("queue low-margin threshold must lie in [0, 1]"));
@@ -248,9 +250,13 @@ pub fn create_review_queue(
     if all_rows.is_empty() {
         return Err(invalid("score file contains no rows"));
     }
-    let corpus_size = options
-        .corpus_size
-        .unwrap_or_else(|| all_rows.iter().map(|row| row.corpus_size).max().unwrap_or(0));
+    let corpus_size = options.corpus_size.unwrap_or_else(|| {
+        all_rows
+            .iter()
+            .map(|row| row.corpus_size)
+            .max()
+            .unwrap_or(0)
+    });
     let rows = all_rows
         .into_iter()
         .filter(|row| row.corpus_size == corpus_size)
@@ -505,7 +511,12 @@ pub fn validate_gold(
                     query.id
                 )));
             }
-            let grade = query.gold.graded_relevance.get(positive).copied().unwrap_or(3);
+            let grade = query
+                .gold
+                .graded_relevance
+                .get(positive)
+                .copied()
+                .unwrap_or(3);
             if !(1..=3).contains(&grade) {
                 return Err(invalid(format!(
                     "gold query {} has invalid relevance grade {grade} for {positive}",
@@ -757,7 +768,10 @@ fn gold_query(
     for positive in &positive_ids {
         graded_relevance.entry(positive.clone()).or_insert(3);
     }
-    if graded_relevance.values().any(|grade| !(1..=3).contains(grade)) {
+    if graded_relevance
+        .values()
+        .any(|grade| !(1..=3).contains(grade))
+    {
         return Err(invalid(format!(
             "decision for {} contains a relevance grade outside 1..=3",
             query.id
@@ -877,9 +891,8 @@ fn read_jsonl<T: DeserializeOwned>(path: &Path) -> AdjudicationResult<Vec<T>> {
             (!value.is_empty() && !value.starts_with('#')).then_some((index, value))
         })
         .map(|(index, value)| {
-            serde_json::from_str(value).map_err(|error| {
-                invalid(format!("{}:{}: {error}", path.display(), index + 1))
-            })
+            serde_json::from_str(value)
+                .map_err(|error| invalid(format!("{}:{}: {error}", path.display(), index + 1)))
         })
         .collect()
 }

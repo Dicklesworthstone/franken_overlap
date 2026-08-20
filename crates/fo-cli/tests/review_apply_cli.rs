@@ -5,9 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use fo_core::{
-    ReviewDecisionKind, ReviewDecisionRecord, SearchIntent, SearchResult,
-};
+use fo_core::{ReviewDecisionKind, ReviewDecisionRecord, SearchIntent, SearchResult};
 
 #[test]
 fn accepted_and_rejected_decisions_update_feedback_and_lineage_idempotently() {
@@ -64,12 +62,16 @@ fn accepted_and_rejected_decisions_update_feedback_and_lineage_idempotently() {
     assert_eq!(feedback.lines().count(), 2);
     assert!(feedback.contains("\"label\":true"));
     assert!(feedback.contains("\"label\":false"));
-    let lineage: serde_json::Value = serde_json::from_slice(
-        &fs::read(&lineage_path).expect("lineage"),
-    )
-    .expect("parse lineage");
-    assert_eq!(lineage["nodes"].as_object().map(|nodes| nodes.len()), Some(2));
-    assert_eq!(lineage["edges"].as_object().map(|edges| edges.len()), Some(1));
+    let lineage: serde_json::Value =
+        serde_json::from_slice(&fs::read(&lineage_path).expect("lineage")).expect("parse lineage");
+    assert_eq!(
+        lineage["nodes"].as_object().map(|nodes| nodes.len()),
+        Some(2)
+    );
+    assert_eq!(
+        lineage["edges"].as_object().map(|edges| edges.len()),
+        Some(1)
+    );
 
     let second = run_apply(
         &results_path,

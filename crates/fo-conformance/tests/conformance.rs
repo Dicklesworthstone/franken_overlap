@@ -67,12 +67,18 @@ fn partial_reuse_is_recovered_as_a_supported_span() {
         "epilogue discusses typography and printing."
     );
     let hits = fixture_index()
-        .search(specimen, &SearchOptions {
-            minimum_similarity: 0.18,
-            ..SearchOptions::default()
-        })
+        .search(
+            specimen,
+            &SearchOptions {
+                minimum_similarity: 0.18,
+                ..SearchOptions::default()
+            },
+        )
         .expect("search");
-    assert!(hits.iter().any(|hit| hit.path == "partial.txt"), "{hits:#?}");
+    assert!(
+        hits.iter().any(|hit| hit.path == "partial.txt"),
+        "{hits:#?}"
+    );
 }
 
 #[test]
@@ -167,5 +173,8 @@ fn temporary_path(name: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!("franken-overlap-{}-{nonce}-{name}", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "franken-overlap-{}-{nonce}-{name}",
+        std::process::id()
+    ))
 }

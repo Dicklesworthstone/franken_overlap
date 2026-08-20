@@ -5,9 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, ValueEnum};
-use fo_core::{
-    DocumentFirstOptions, Index, PreparedOverlapQuery, SearchIntent, SearchOptions,
-};
+use fo_core::{DocumentFirstOptions, Index, PreparedOverlapQuery, SearchIntent, SearchOptions};
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -92,10 +90,8 @@ fn run() -> CliResult<()> {
     let index = Index::load_auto(&command.index)?;
     let prepared = match command.prepared_query.as_deref() {
         Some(path) => serde_json::from_slice::<PreparedOverlapQuery>(&fs::read(path)?)?,
-        None => index.prepare_overlap_query(&specimen_text(
-            command.specimen.as_deref(),
-            command.text,
-        )?)?,
+        None => index
+            .prepare_overlap_query(&specimen_text(command.specimen.as_deref(), command.text)?)?,
     };
     prepared.validate_for(&index)?;
     if let Some(path) = command.prepared_output.as_deref() {
@@ -138,13 +134,15 @@ fn run() -> CliResult<()> {
             "Prepared feature occurrences: {}",
             report.prepared_feature_occurrences
         );
-        println!("Retained distinct features: {}", report.retained_distinct_features);
+        println!(
+            "Retained distinct features: {}",
+            report.retained_distinct_features
+        );
         println!("Postings scanned:        {}", report.postings_scanned);
         println!("Posting pairs:           {}", report.posting_pairs);
         println!(
             "Suppressed cap / work:  {} / {}",
-            report.suppressed_features_by_posting_cap,
-            report.suppressed_features_by_work_budget
+            report.suppressed_features_by_posting_cap, report.suppressed_features_by_work_budget
         );
         println!("\nDocument candidates:");
         for (rank, candidate) in report.document_candidates.iter().take(20).enumerate() {
@@ -183,9 +181,7 @@ fn specimen_text(path: Option<&Path>, inline: Option<String>) -> CliResult<Strin
         (None, None) => Err(invalid(
             "provide a specimen file, --text, or --prepared-query",
         )),
-        (Some(_), Some(_)) => Err(invalid(
-            "specimen file and --text are mutually exclusive",
-        )),
+        (Some(_), Some(_)) => Err(invalid("specimen file and --text are mutually exclusive")),
     }
 }
 
@@ -195,7 +191,9 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> CliResult<()> {
     }
     let temporary = path.with_extension(format!(
         "{}.tmp-{}",
-        path.extension().and_then(|value| value.to_str()).unwrap_or("json"),
+        path.extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("json"),
         std::process::id()
     ));
     fs::write(&temporary, bytes)?;

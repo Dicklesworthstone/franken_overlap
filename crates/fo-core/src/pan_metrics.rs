@@ -75,35 +75,31 @@ pub fn pan_evaluate(
         annotation.validate()?;
     }
 
-    let macro_recall = macro_recall(cases, detections);
+    let macro_recall_score = macro_recall(cases, detections);
     let macro_precision = macro_recall(detections, cases);
     let (micro_recall, micro_precision) = micro_recall_and_precision(cases, detections);
     let granularity = granularity(cases, detections);
-    let macro_f1 = harmonic_mean(macro_recall, macro_precision);
+    let macro_f1 = harmonic_mean(macro_recall_score, macro_precision);
     let micro_f1 = harmonic_mean(micro_recall, micro_precision);
 
     Ok(PanEvaluationReport {
         cases: cases.len(),
         detections: detections.len(),
-        macro_recall,
+        macro_recall: macro_recall_score,
         macro_precision,
         macro_f1,
         micro_recall,
         micro_precision,
         micro_f1,
         granularity,
-        macro_plagdet: plagdet_score(macro_recall, macro_precision, granularity),
+        macro_plagdet: plagdet_score(macro_recall_score, macro_precision, granularity),
         micro_plagdet: plagdet_score(micro_recall, micro_precision, granularity),
     })
 }
 
 #[must_use]
 pub fn plagdet_score(recall: f64, precision: f64, granularity: f64) -> f64 {
-    if (recall == 0.0 && precision == 0.0)
-        || recall < 0.0
-        || precision < 0.0
-        || granularity < 1.0
-    {
+    if (recall == 0.0 && precision == 0.0) || recall < 0.0 || precision < 0.0 || granularity < 1.0 {
         return 0.0;
     }
     harmonic_mean(recall, precision) / (1.0 + granularity).log2()
@@ -172,10 +168,7 @@ fn case_recall(case: &PanAnnotation, detections: &[&PanAnnotation]) -> f64 {
     detected as f64 / denominator.max(1) as f64
 }
 
-fn micro_recall_and_precision(
-    cases: &[PanAnnotation],
-    detections: &[PanAnnotation],
-) -> (f64, f64) {
+fn micro_recall_and_precision(cases: &[PanAnnotation], detections: &[PanAnnotation]) -> (f64, f64) {
     if cases.is_empty() && detections.is_empty() {
         return (1.0, 1.0);
     }
@@ -307,9 +300,7 @@ fn count_axis(annotations: &[PanAnnotation], source: bool) -> usize {
         .sum()
 }
 
-fn index_by_this_reference<'a>(
-    annotations: &'a [PanAnnotation],
-) -> BTreeMap<&'a str, Vec<&'a PanAnnotation>> {
+fn index_by_this_reference(annotations: &[PanAnnotation]) -> BTreeMap<&str, Vec<&PanAnnotation>> {
     let mut index = BTreeMap::<&str, Vec<&PanAnnotation>>::new();
     for annotation in annotations {
         index

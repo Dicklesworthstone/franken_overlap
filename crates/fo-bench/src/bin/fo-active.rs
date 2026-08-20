@@ -121,7 +121,10 @@ fn read_candidates(path: &Path) -> CliResult<Vec<ActiveLearningCandidate>> {
 }
 
 fn write_jsonl(path: &Path, values: &[ActiveLearningSelection]) -> CliResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let temporary = temporary_path(path);
@@ -132,10 +135,7 @@ fn write_jsonl(path: &Path, values: &[ActiveLearningSelection]) -> CliResult<()>
     replace_file(&temporary, path)
 }
 
-fn write_jsonl_to(
-    writer: &mut impl Write,
-    values: &[ActiveLearningSelection],
-) -> CliResult<()> {
+fn write_jsonl_to(writer: &mut impl Write, values: &[ActiveLearningSelection]) -> CliResult<()> {
     for value in values {
         serde_json::to_writer(&mut *writer, value)?;
         writer.write_all(b"\n")?;
@@ -145,7 +145,10 @@ fn write_jsonl_to(
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> CliResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let temporary = temporary_path(path);

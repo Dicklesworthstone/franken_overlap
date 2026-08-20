@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::Parser;
-use evidence::{BenchmarkReport, EvidenceOptions, build_evidence, read_score_rows, render_markdown};
+use evidence::{
+    BenchmarkReport, EvidenceOptions, build_evidence, read_score_rows, render_markdown,
+};
 use fo_corpus::{atomic_write, sha256_hex, unix_timestamp};
 use serde::Serialize;
 
@@ -130,11 +132,11 @@ fn run() -> CliResult<()> {
     let environment_path = command.output.join("environment.json");
     atomic_write(&evidence_path, &serde_json::to_vec_pretty(&report)?)?;
     atomic_write(&examples_path, render_markdown(&report).as_bytes())?;
-    atomic_write(
-        &environment_path,
-        &serde_json::to_vec_pretty(&environment)?,
+    atomic_write(&environment_path, &serde_json::to_vec_pretty(&environment)?)?;
+    let bundle = write_bundle(
+        &command.output,
+        &[&evidence_path, &examples_path, &environment_path],
     )?;
-    let bundle = write_bundle(&command.output, &[&evidence_path, &examples_path, &environment_path])?;
 
     println!("Evidence bundle: {}", command.output.display());
     println!("Corpus:          {}", report.corpus_id);

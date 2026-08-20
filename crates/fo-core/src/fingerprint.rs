@@ -74,21 +74,9 @@ pub fn qgram_hashes(tokens: &[u32], qgram_size: usize) -> Result<Vec<Feature>> {
 }
 
 #[must_use]
+#[cfg_attr(not(feature = "frankenscipy"), allow(dead_code))]
 pub(crate) fn categorical_hash(value: u32, repetition: usize) -> u64 {
-    avalanche(
-        u64::from(value)
-            ^ SEED_LO
-            ^ (repetition as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15),
-    )
-}
-
-#[must_use]
-pub(crate) fn categorical_sign(value: u32, repetition: usize) -> f64 {
-    if avalanche(categorical_hash(value, repetition) ^ SEED_HI) & 1 == 0 {
-        1.0
-    } else {
-        -1.0
-    }
+    avalanche(u64::from(value) ^ SEED_LO ^ (repetition as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15))
 }
 
 fn finish(hash_hi: u64, hash_lo: u64, qgram_size: usize) -> Fingerprint {
@@ -136,7 +124,10 @@ mod tests {
 
     #[test]
     fn rolling_hash_matches_recomputed_substrings() {
-        let tokens = "the quick brown fox".chars().map(u32::from).collect::<Vec<_>>();
+        let tokens = "the quick brown fox"
+            .chars()
+            .map(u32::from)
+            .collect::<Vec<_>>();
         let rolling = qgram_hashes(&tokens, 5).expect("hashes");
         for (position, feature) in rolling.iter().enumerate() {
             let direct = qgram_hashes(&tokens[position..position + 5], 5).expect("direct");

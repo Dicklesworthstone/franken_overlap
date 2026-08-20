@@ -7,20 +7,15 @@ use crate::{
     qgram_hashes, winnow,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TextDomain {
+    #[default]
     General,
     SecFiling,
     Contract,
     Ocr,
     SourceCode,
-}
-
-impl Default for TextDomain {
-    fn default() -> Self {
-        Self::General
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -263,8 +258,7 @@ impl Index {
                     suppressed_by_document_frequency_occurrences.saturating_add(occurrences);
                 continue;
             }
-            let idf = ((document_count as f32 + 1.0)
-                / (entry.document_frequency as f32 + 1.0))
+            let idf = ((document_count as f32 + 1.0) / (entry.document_frequency as f32 + 1.0))
                 .ln()
                 + 1.0;
             if idf < effective_min_idf {
@@ -283,8 +277,7 @@ impl Index {
         }
 
         candidates.sort_unstable_by(|left, right| {
-            left
-                .posting_pairs
+            left.posting_pairs
                 .cmp(&right.posting_pairs)
                 .then_with(|| left.posting_count.cmp(&right.posting_count))
                 .then_with(|| right.idf.total_cmp(&left.idf))
@@ -299,21 +292,18 @@ impl Index {
         let mut suppressed_by_work_budget_occurrences = 0usize;
         for candidate in candidates {
             if retained_pairs.saturating_add(candidate.posting_pairs) > effective_pair_budget {
-                suppressed_by_work_budget_occurrences = suppressed_by_work_budget_occurrences
-                    .saturating_add(candidate.occurrences);
+                suppressed_by_work_budget_occurrences =
+                    suppressed_by_work_budget_occurrences.saturating_add(candidate.occurrences);
                 continue;
             }
             retained_pairs = retained_pairs.saturating_add(candidate.posting_pairs);
             retained_occurrences = retained_occurrences.saturating_add(candidate.occurrences);
-            retained_idf_weight +=
-                f64::from(candidate.idf) * candidate.occurrences as f64;
-            maximum_retained_df =
-                maximum_retained_df.max(candidate.document_frequency_fraction);
+            retained_idf_weight += f64::from(candidate.idf) * candidate.occurrences as f64;
+            maximum_retained_df = maximum_retained_df.max(candidate.document_frequency_fraction);
             retained.insert(candidate.fingerprint);
         }
 
-        let informative_fraction = retained_occurrences as f32
-            / selected_occurrences.max(1) as f32;
+        let informative_fraction = retained_occurrences as f32 / selected_occurrences.max(1) as f32;
         let analysis = DomainQueryAnalysis {
             normalized_query_tokens: query.len(),
             selected_feature_occurrences: selected_occurrences,
@@ -340,8 +330,8 @@ impl Index {
             .policy
             .minimum_informative_occurrences
             .max(options.search.minimum_anchor_hits as usize);
-        let thin = retained_occurrences < minimum_occurrences
-            || informative_fraction < required_fraction;
+        let thin =
+            retained_occurrences < minimum_occurrences || informative_fraction < required_fraction;
         if thin {
             let results = if options.policy.allow_direct_fallback_on_thin_evidence {
                 self.search(specimen, &options.search)?
@@ -422,15 +412,32 @@ mod tests {
 
     #[test]
     fn sec_policy_suppresses_corpus_wide_boilerplate() {
+        // Each filing pairs corpus-wide boilerplate with a genuinely distinct
+        // issuer-specific disclosure. A template that varies only by a digit
+        // would itself be corpus-wide-frequent and the policy would correctly
+        // refuse for insufficient distinctive evidence.
+        let distinct_disclosures = [
+            "copper smelter maintenance shutdown reduced quarterly concentrate output",
+            "regional grocery banner conversions pressured private label penetration",
+            "offshore rig demobilization charges followed the gulf contract expiry",
+            "pediatric vaccine cold chain expansion required dedicated freezer logistics",
+            "satellite transponder lease renewals concentrated among two broadcasters",
+            "timberland harvest deferrals responded to weak sawlog stumpage pricing",
+            "specialty resin feedstock hedges expire before the planned turnaround",
+            "branch network consolidation accelerated digital deposit migration",
+            "legacy annuity block reinsurance transferred longevity exposure",
+            "container terminal automation slowed crane productivity during rollout",
+            "craft brewing taproom closures shifted volume toward packaged channels",
+            "orphan drug designation supported expanded compassionate use access",
+        ];
         let mut builder = IndexBuilder::new(IndexConfig::default()).expect("builder");
-        for index in 0..12 {
+        for (index, disclosure) in distinct_disclosures.iter().enumerate() {
             builder
                 .add_document(
                     format!("filing-{index}"),
-                    format!(
+                    &format!(
                         "forward looking statements are subject to risks and uncertainties \
-                         common boilerplate repeated in every filing unique-marker-{index} \
-                         liquidity covenant maturity disclosure for issuer {index}"
+                         common boilerplate repeated in every filing {disclosure}"
                     ),
                 )
                 .expect("document");
@@ -439,8 +446,8 @@ mod tests {
         let report = index
             .search_domain(
                 "forward looking statements are subject to risks and uncertainties \
-                 common boilerplate repeated in every filing unique marker 7 liquidity \
-                 covenant maturity disclosure for issuer 7",
+                 common boilerplate repeated in every filing branch network \
+                 consolidation accelerated digital deposit migration",
                 &DomainSearchOptions {
                     search: SearchOptions {
                         minimum_similarity: 0.10,
@@ -491,11 +498,16 @@ mod tests {
             ..IndexConfig::default()
         };
         let mut builder = IndexBuilder::new(config).expect("builder");
-        builder.add_document("source", "alpha beta gamma").expect("add");
+        builder
+            .add_document("source", "alpha beta gamma")
+            .expect("add");
         let report = builder
             .build()
             .expect("index")
-            .search_domain("beta", &DomainSearchOptions::for_domain(TextDomain::General))
+            .search_domain(
+                "beta",
+                &DomainSearchOptions::for_domain(TextDomain::General),
+            )
             .expect("search");
         assert_eq!(report.status, DomainSearchStatus::ShortQueryDirectFallback);
         assert_eq!(report.results.first().expect("hit").path, "source");

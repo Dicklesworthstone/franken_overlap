@@ -116,12 +116,7 @@ pub fn spectral_scan(
         }
     };
 
-    Ok(extract_peaks(
-        &scores,
-        &corpus,
-        specimen.len(),
-        options,
-    ))
+    Ok(extract_peaks(&scores, &corpus, specimen.len(), options))
 }
 
 fn comparison_work(corpus_length: usize, specimen_length: usize) -> u128 {
@@ -183,11 +178,7 @@ fn phase_fft_scores(
                 sine.len()
             )));
         }
-        for ((sum, cosine_value), sine_value) in accumulated
-            .iter_mut()
-            .zip(cosine)
-            .zip(sine)
-        {
+        for ((sum, cosine_value), sine_value) in accumulated.iter_mut().zip(cosine).zip(sine) {
             *sum += cosine_value + sine_value;
         }
     }
@@ -252,9 +243,7 @@ fn extract_peaks(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        SpectralOptions, exact_direct_scores, phase_components, spectral_scan,
-    };
+    use super::{SpectralOptions, exact_direct_scores, phase_components, spectral_scan};
     use crate::NormalizationProfile;
 
     #[test]

@@ -6,7 +6,7 @@ use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
+use std::sync::mpsc::{Receiver, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 use fo_core::{
     DomainFeaturePolicy, DomainSearchOptions, HybridFilter, HybridIndex, HybridQueryMode,
-    HybridSearchOptions, LexicalSearchOptions, SearchIntent, SearchOptions,
-    SemanticCandidateSet, SemanticFusionOptions, TextDomain, fuse_semantic_candidates,
+    HybridSearchOptions, LexicalSearchOptions, SearchIntent, SearchOptions, SemanticCandidateSet,
+    SemanticFusionOptions, TextDomain, fuse_semantic_candidates,
 };
 use serde::{Deserialize, Serialize};
 
@@ -124,12 +124,8 @@ impl ServiceMetrics {
 
     fn observe_latency(&self, elapsed: Duration) {
         let micros = elapsed.as_micros().min(u128::from(u64::MAX)) as u64;
-        self.latency_sum_micros
-            .fetch_add(micros, Ordering::Relaxed);
-        for (bucket, counter) in LATENCY_BUCKETS_MICROS
-            .iter()
-            .zip(&self.latency_buckets)
-        {
+        self.latency_sum_micros.fetch_add(micros, Ordering::Relaxed);
+        for (bucket, counter) in LATENCY_BUCKETS_MICROS.iter().zip(&self.latency_buckets) {
             if micros <= *bucket {
                 counter.fetch_add(1, Ordering::Relaxed);
             }
@@ -340,9 +336,8 @@ fn service_config(command: &Cli) -> CliResult<ServiceConfig> {
     }
     let api_key = match &command.api_key_env {
         Some(variable) => {
-            let value = std::env::var(variable).map_err(|_| {
-                format!("API key environment variable {variable:?} is not set")
-            })?;
+            let value = std::env::var(variable)
+                .map_err(|_| format!("API key environment variable {variable:?} is not set"))?;
             if value.trim().is_empty() {
                 return Err(format!("API key environment variable {variable:?} is empty").into());
             }
@@ -350,9 +345,7 @@ fn service_config(command: &Cli) -> CliResult<ServiceConfig> {
         }
         None => None,
     };
-    if !is_loopback(command.bind.ip())
-        && api_key.is_none()
-        && !command.allow_unauthenticated_public
+    if !is_loopback(command.bind.ip()) && api_key.is_none() && !command.allow_unauthenticated_public
     {
         return Err(
             "non-loopback binds require --api-key-env or --allow-unauthenticated-public".into(),
@@ -387,14 +380,16 @@ fn spawn_workers(receiver: Receiver<TcpStream>, state: Arc<AppState>, threads: u
         let state = Arc::clone(&state);
         thread::Builder::new()
             .name(format!("fo-http-{index}"))
-            .spawn(move || loop {
-                let stream = {
-                    let receiver = receiver.lock().expect("worker receiver mutex poisoned");
-                    receiver.recv()
-                };
-                match stream {
-                    Ok(stream) => handle_connection(stream, &state),
-                    Err(_) => break,
+            .spawn(move || {
+                loop {
+                    let stream = {
+                        let receiver = receiver.lock().expect("worker receiver mutex poisoned");
+                        receiver.recv()
+                    };
+                    match stream {
+                        Ok(stream) => handle_connection(stream, &state),
+                        Err(_) => break,
+                    }
                 }
             })
             .expect("could not spawn HTTP worker");
@@ -413,8 +408,8 @@ fn handle_connection(mut stream: TcpStream, state: &AppState) {
     }
     state.metrics.requests.fetch_add(1, Ordering::Relaxed);
 
-    let result = read_request(&mut stream, state.config.maximum_request_bytes)
-        .and_then(|request| {
+    let result =
+        read_request(&mut stream, state.config.maximum_request_bytes).and_then(|request| {
             state
                 .metrics
                 .bytes_in
@@ -673,21 +668,62 @@ fn health(state: &AppState) -> HealthResponse {
 fn prometheus_metrics(state: &AppState) -> String {
     let metrics = &state.metrics;
     let mut output = String::new();
-    metric(&mut output, "fo_accepted_connections_total", metrics.accepted_connections.load(Ordering::Relaxed));
-    metric(&mut output, "fo_queue_rejections_total", metrics.queue_rejections.load(Ordering::Relaxed));
-    metric(&mut output, "fo_requests_total", metrics.requests.load(Ordering::Relaxed));
-    metric(&mut output, "fo_completed_total", metrics.completed.load(Ordering::Relaxed));
-    metric(&mut output, "fo_failures_total", metrics.failures.load(Ordering::Relaxed));
-    metric(&mut output, "fo_unauthorized_total", metrics.unauthorized.load(Ordering::Relaxed));
-    metric(&mut output, "fo_oversized_total", metrics.oversized.load(Ordering::Relaxed));
-    metric(&mut output, "fo_in_flight", metrics.in_flight.load(Ordering::Relaxed));
-    metric(&mut output, "fo_search_requests_total", metrics.search_requests.load(Ordering::Relaxed));
-    metric(&mut output, "fo_bytes_in_total", metrics.bytes_in.load(Ordering::Relaxed));
-    metric(&mut output, "fo_bytes_out_total", metrics.bytes_out.load(Ordering::Relaxed));
-    for (boundary, counter) in LATENCY_BUCKETS_MICROS
-        .iter()
-        .zip(&metrics.latency_buckets)
-    {
+    metric(
+        &mut output,
+        "fo_accepted_connections_total",
+        metrics.accepted_connections.load(Ordering::Relaxed),
+    );
+    metric(
+        &mut output,
+        "fo_queue_rejections_total",
+        metrics.queue_rejections.load(Ordering::Relaxed),
+    );
+    metric(
+        &mut output,
+        "fo_requests_total",
+        metrics.requests.load(Ordering::Relaxed),
+    );
+    metric(
+        &mut output,
+        "fo_completed_total",
+        metrics.completed.load(Ordering::Relaxed),
+    );
+    metric(
+        &mut output,
+        "fo_failures_total",
+        metrics.failures.load(Ordering::Relaxed),
+    );
+    metric(
+        &mut output,
+        "fo_unauthorized_total",
+        metrics.unauthorized.load(Ordering::Relaxed),
+    );
+    metric(
+        &mut output,
+        "fo_oversized_total",
+        metrics.oversized.load(Ordering::Relaxed),
+    );
+    metric(
+        &mut output,
+        "fo_in_flight",
+        metrics.in_flight.load(Ordering::Relaxed),
+    );
+    metric(
+        &mut output,
+        "fo_search_requests_total",
+        metrics.search_requests.load(Ordering::Relaxed),
+    );
+    metric(
+        &mut output,
+        "fo_bytes_in_total",
+        metrics.bytes_in.load(Ordering::Relaxed),
+    );
+    metric(
+        &mut output,
+        "fo_bytes_out_total",
+        metrics.bytes_out.load(Ordering::Relaxed),
+    );
+    for (boundary, counter) in LATENCY_BUCKETS_MICROS.iter().zip(&metrics.latency_buckets) {
         output.push_str(&format!(
             "fo_request_latency_seconds_bucket{{le=\"{:.6}\"}} {}\n",
             *boundary as f64 / 1_000_000.0,
@@ -724,11 +760,21 @@ fn read_request(stream: &mut TcpStream, maximum_bytes: usize) -> Result<HttpRequ
             .read(&mut chunk)
             .map_err(|error| ApiError::new(400, "read_failed", error.to_string()))?;
         if read == 0 {
-            return Err(ApiError::new(400, "incomplete_request", "connection closed before headers"));
+            return Err(ApiError::new(
+                400,
+                "incomplete_request",
+                "connection closed before headers",
+            ));
         }
         bytes.extend_from_slice(&chunk[..read]);
-        if bytes.len() > maximum_bytes || bytes.len() > MAX_HEADER_BYTES && find_header_end(&bytes).is_none() {
-            return Err(ApiError::new(413, "request_too_large", "request headers exceed the configured limit"));
+        if bytes.len() > maximum_bytes
+            || bytes.len() > MAX_HEADER_BYTES && find_header_end(&bytes).is_none()
+        {
+            return Err(ApiError::new(
+                413,
+                "request_too_large",
+                "request headers exceed the configured limit",
+            ));
         }
         if let Some(end) = find_header_end(&bytes) {
             break end;
@@ -741,19 +787,31 @@ fn read_request(stream: &mut TcpStream, maximum_bytes: usize) -> Result<HttpRequ
         .get("transfer-encoding")
         .is_some_and(|value| !value.eq_ignore_ascii_case("identity"))
     {
-        return Err(ApiError::new(400, "unsupported_transfer_encoding", "chunked transfer encoding is not supported"));
+        return Err(ApiError::new(
+            400,
+            "unsupported_transfer_encoding",
+            "chunked transfer encoding is not supported",
+        ));
     }
     let content_length = match headers.get("content-length") {
-        Some(value) => value.parse::<usize>().map_err(|_| {
-            ApiError::new(400, "invalid_content_length", "invalid Content-Length")
-        })?,
+        Some(value) => value
+            .parse::<usize>()
+            .map_err(|_| ApiError::new(400, "invalid_content_length", "invalid Content-Length"))?,
         None if method == "POST" => {
-            return Err(ApiError::new(411, "length_required", "POST requires Content-Length"));
+            return Err(ApiError::new(
+                411,
+                "length_required",
+                "POST requires Content-Length",
+            ));
         }
         None => 0,
     };
     if header_end.saturating_add(content_length) > maximum_bytes {
-        return Err(ApiError::new(413, "request_too_large", "request exceeds configured byte limit"));
+        return Err(ApiError::new(
+            413,
+            "request_too_large",
+            "request exceeds configured byte limit",
+        ));
     }
     let body_start = header_end + 4;
     while bytes.len() < body_start.saturating_add(content_length) {
@@ -761,11 +819,19 @@ fn read_request(stream: &mut TcpStream, maximum_bytes: usize) -> Result<HttpRequ
             .read(&mut chunk)
             .map_err(|error| ApiError::new(400, "read_failed", error.to_string()))?;
         if read == 0 {
-            return Err(ApiError::new(400, "incomplete_body", "connection closed before request body"));
+            return Err(ApiError::new(
+                400,
+                "incomplete_body",
+                "connection closed before request body",
+            ));
         }
         bytes.extend_from_slice(&chunk[..read]);
         if bytes.len() > maximum_bytes {
-            return Err(ApiError::new(413, "request_too_large", "request exceeds configured byte limit"));
+            return Err(ApiError::new(
+                413,
+                "request_too_large",
+                "request exceeds configured byte limit",
+            ));
         }
     }
     Ok(HttpRequest {
@@ -792,7 +858,11 @@ fn parse_head(head: &str) -> Result<(String, String, BTreeMap<String, String>), 
         || !version.starts_with("HTTP/1.")
         || path.contains(['\r', '\n'])
     {
-        return Err(ApiError::new(400, "invalid_request_line", "invalid HTTP request line"));
+        return Err(ApiError::new(
+            400,
+            "invalid_request_line",
+            "invalid HTTP request line",
+        ));
     }
     let mut headers = BTreeMap::new();
     for line in lines {
@@ -800,14 +870,30 @@ fn parse_head(head: &str) -> Result<(String, String, BTreeMap<String, String>), 
             continue;
         }
         let Some((name, value)) = line.split_once(':') else {
-            return Err(ApiError::new(400, "invalid_header", "malformed HTTP header"));
+            return Err(ApiError::new(
+                400,
+                "invalid_header",
+                "malformed HTTP header",
+            ));
         };
         let name = name.trim().to_ascii_lowercase();
-        if name.is_empty() || !name.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-') {
-            return Err(ApiError::new(400, "invalid_header", "invalid HTTP header name"));
+        if name.is_empty()
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        {
+            return Err(ApiError::new(
+                400,
+                "invalid_header",
+                "invalid HTTP header name",
+            ));
         }
         if headers.insert(name, value.trim().to_owned()).is_some() {
-            return Err(ApiError::new(400, "duplicate_header", "duplicate HTTP header"));
+            return Err(ApiError::new(
+                400,
+                "duplicate_header",
+                "duplicate HTTP header",
+            ));
         }
     }
     Ok((method.to_owned(), path.to_owned(), headers))
@@ -817,7 +903,11 @@ fn find_header_end(bytes: &[u8]) -> Option<usize> {
     bytes.windows(4).position(|window| window == b"\r\n\r\n")
 }
 
-fn write_error(stream: &mut TcpStream, error: ApiError, state: &AppState) -> std::io::Result<usize> {
+fn write_error(
+    stream: &mut TcpStream,
+    error: ApiError,
+    state: &AppState,
+) -> std::io::Result<usize> {
     let body = serde_json::to_vec(&ErrorBody {
         error: ErrorDetail {
             code: error.code,
@@ -852,9 +942,13 @@ fn write_response(
     state: &AppState,
 ) -> std::io::Result<usize> {
     let reason = status_reason(response.status);
-    let cors = state.config.allow_origin.as_ref().map_or_else(String::new, |origin| {
-        format!("Access-Control-Allow-Origin: {origin}\r\n")
-    });
+    let cors = state
+        .config
+        .allow_origin
+        .as_ref()
+        .map_or_else(String::new, |origin| {
+            format!("Access-Control-Allow-Origin: {origin}\r\n")
+        });
     let head = format!(
         "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}Connection: close\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-store\r\n\r\n",
         response.status,
@@ -890,7 +984,11 @@ fn percent_decode(value: &str) -> Result<String, ApiError> {
     while index < bytes.len() {
         if bytes[index] == b'%' {
             if index + 2 >= bytes.len() {
-                return Err(ApiError::new(400, "invalid_path_encoding", "truncated percent encoding"));
+                return Err(ApiError::new(
+                    400,
+                    "invalid_path_encoding",
+                    "truncated percent encoding",
+                ));
             }
             let high = hex(bytes[index + 1])?;
             let low = hex(bytes[index + 2])?;
@@ -910,7 +1008,11 @@ fn hex(value: u8) -> Result<u8, ApiError> {
         b'0'..=b'9' => Ok(value - b'0'),
         b'a'..=b'f' => Ok(value - b'a' + 10),
         b'A'..=b'F' => Ok(value - b'A' + 10),
-        _ => Err(ApiError::new(400, "invalid_path_encoding", "invalid percent encoding")),
+        _ => Err(ApiError::new(
+            400,
+            "invalid_path_encoding",
+            "invalid percent encoding",
+        )),
     }
 }
 
@@ -931,10 +1033,9 @@ mod tests {
 
     #[test]
     fn parses_strict_http_headers() {
-        let (method, path, headers) = parse_head(
-            "POST /v1/search HTTP/1.1\r\nHost: localhost\r\nContent-Length: 13",
-        )
-        .expect("head");
+        let (method, path, headers) =
+            parse_head("POST /v1/search HTTP/1.1\r\nHost: localhost\r\nContent-Length: 13")
+                .expect("head");
         assert_eq!(method, "POST");
         assert_eq!(path, "/v1/search");
         assert_eq!(headers["content-length"], "13");
@@ -943,7 +1044,10 @@ mod tests {
 
     #[test]
     fn decodes_document_ids_without_form_url_semantics() {
-        assert_eq!(percent_decode("CIK0001%23section-1").expect("decode"), "CIK0001#section-1");
+        assert_eq!(
+            percent_decode("CIK0001%23section-1").expect("decode"),
+            "CIK0001#section-1"
+        );
         assert_eq!(percent_decode("a+b").expect("decode"), "a+b");
         assert!(percent_decode("bad%2").is_err());
     }
@@ -970,8 +1074,8 @@ mod tests {
 
     #[test]
     fn search_request_defaults_are_bounded() {
-        let request = serde_json::from_str::<SearchRequest>("{\"query\":\"alpha\"}")
-            .expect("request");
+        let request =
+            serde_json::from_str::<SearchRequest>("{\"query\":\"alpha\"}").expect("request");
         assert_eq!(request.query, "alpha");
         assert_eq!(request.minimum_matched_tokens, 24);
         assert_eq!(request.maximum_postings_per_feature, 50_000);

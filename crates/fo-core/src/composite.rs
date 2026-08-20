@@ -119,14 +119,12 @@ impl Index {
 
         let mut passage_options = search_options.clone();
         passage_options.intent = SearchIntent::AnyPassage;
-        passage_options.max_results = search_options
-            .max_candidates
-            .max(
-                search_options
-                    .max_results
-                    .saturating_mul(composite_options.maximum_blocks_per_document)
-                    .saturating_mul(4),
-            );
+        passage_options.max_results = search_options.max_candidates.max(
+            search_options
+                .max_results
+                .saturating_mul(composite_options.maximum_blocks_per_document)
+                .saturating_mul(4),
+        );
         passage_options.minimum_similarity = passage_options
             .minimum_similarity
             .min(composite_options.minimum_aggregate_score * 0.40)
@@ -162,24 +160,15 @@ impl Index {
                 .collect::<Vec<_>>();
             let query_union = interval_union_length(&query_intervals);
             let corpus_union = interval_union_length(&corpus_intervals);
-            let query_coverage =
-                (query_union as f32 / query.len().max(1) as f32).clamp(0.0, 1.0);
+            let query_coverage = (query_union as f32 / query.len().max(1) as f32).clamp(0.0, 1.0);
             let source_coverage = (corpus_union as f32
                 / document.normalized.tokens.len().max(1) as f32)
                 .clamp(0.0, 1.0);
-            if !passes_intent_coverage(
-                search_options,
-                query_coverage,
-                source_coverage,
-            ) {
+            if !passes_intent_coverage(search_options, query_coverage, source_coverage) {
                 continue;
             }
             let matched_tokens = query_union.min(corpus_union);
-            if matched_tokens
-                < search_options
-                    .minimum_matched_tokens
-                    .min(query.len())
-            {
+            if matched_tokens < search_options.minimum_matched_tokens.min(query.len()) {
                 continue;
             }
             let weight_total = blocks
@@ -191,9 +180,7 @@ impl Index {
             } else {
                 blocks
                     .iter()
-                    .map(|block| {
-                        block.edit_similarity * block.matched_tokens.max(1) as f32
-                    })
+                    .map(|block| block.edit_similarity * block.matched_tokens.max(1) as f32)
                     .sum::<f32>()
                     / weight_total as f32
             };
@@ -336,13 +323,11 @@ fn composite_score(
     let block_support = (1.0 - (-(block_count as f32) / 2.0).exp()).clamp(0.0, 1.0);
     let reorder_factor = if reordered { 0.97 } else { 1.0 };
     match intent {
-        SearchIntent::AnyPassage => {
-            (0.72 * edit_similarity
-                + 0.13 * query_coverage
-                + 0.08 * evidence_confidence
-                + 0.07 * block_support)
-                .clamp(0.0, 1.0)
-        }
+        SearchIntent::AnyPassage => (0.72 * edit_similarity
+            + 0.13 * query_coverage
+            + 0.08 * evidence_confidence
+            + 0.07 * block_support)
+            .clamp(0.0, 1.0),
         SearchIntent::SourceAttribution => {
             let base = 0.54 * edit_similarity
                 + 0.25 * query_coverage
@@ -415,12 +400,15 @@ mod tests {
     #[test]
     fn combines_reordered_passages_from_one_source() {
         let block_a = "the observatory opened the copper shutters before dawn and checked every instrument twice";
-        let block_b = "the raw measurements were published before the team proposed a causal explanation";
+        let block_b =
+            "the raw measurements were published before the team proposed a causal explanation";
         let mut builder = IndexBuilder::new(IndexConfig::default()).expect("builder");
         builder
             .add_document(
                 "source.txt",
-                &format!("{block_a}. unrelated bridge material about weather and cooking. {block_b}."),
+                &format!(
+                    "{block_a}. unrelated bridge material about weather and cooking. {block_b}."
+                ),
             )
             .expect("source");
         builder

@@ -241,7 +241,10 @@ fn run_build(command: BuildCommand) -> CliResult<()> {
             report.stats.overlap.distinct_fingerprints
         );
         println!("  overlap postings:    {}", report.stats.overlap.postings);
-        println!("  lexical terms:       {}", report.stats.lexical.distinct_terms);
+        println!(
+            "  lexical terms:       {}",
+            report.stats.lexical.distinct_terms
+        );
         println!("  lexical postings:    {}", report.stats.lexical.postings);
         println!("  skipped:             {}", report.skipped);
     }
@@ -355,7 +358,10 @@ fn run_inspect(command: InspectCommand) -> CliResult<()> {
         println!("Overlap postings:     {}", stats.overlap.postings);
         println!("Lexical terms:        {}", stats.lexical.distinct_terms);
         println!("Lexical postings:     {}", stats.lexical.postings);
-        println!("Average body tokens:  {:.2}", stats.lexical.average_body_length);
+        println!(
+            "Average body tokens:  {:.2}",
+            stats.lexical.average_body_length
+        );
     }
     Ok(())
 }
@@ -430,10 +436,7 @@ fn load_corpus(root: &Path, maximum_bytes: u64) -> CliResult<(Vec<HybridDocument
     collect_loaded(loaded)
 }
 
-fn provider_tags(
-    manifest: &CorpusManifest,
-    document: &fo_corpus::CorpusDocument,
-) -> Vec<String> {
+fn provider_tags(manifest: &CorpusManifest, document: &fo_corpus::CorpusDocument) -> Vec<String> {
     let mut tags = vec![format!("{:?}", manifest.provider).to_ascii_lowercase()];
     for key in ["form", "tickers", "subjects"] {
         if let Some(value) = document.metadata.get(key) {

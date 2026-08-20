@@ -334,13 +334,11 @@ impl MultiViewIndex {
         for view in &self.views {
             let mut view_options = options.clone();
             view_options.intent = SearchIntent::AnyPassage;
-            view_options.max_results = options
-                .max_candidates
-                .max(
-                    options
-                        .max_results
-                        .saturating_mul(self.config.per_view_candidate_multiplier),
-                );
+            view_options.max_results = options.max_candidates.max(
+                options
+                    .max_results
+                    .saturating_mul(self.config.per_view_candidate_multiplier),
+            );
             view_options.max_candidates = view_options.max_candidates.max(view_options.max_results);
             view_options.minimum_similarity = options.minimum_similarity.min(0.15);
             view_options.minimum_matched_tokens = options
@@ -554,24 +552,20 @@ fn fuse_cluster(
     let variance = cluster
         .evidence
         .iter()
-        .map(|evidence| {
-            evidence.view_weight * (evidence.raw_score - weighted_raw_score).powi(2)
-        })
+        .map(|evidence| evidence.view_weight * (evidence.raw_score - weighted_raw_score).powi(2))
         .sum::<f32>()
         / total_weight;
     let score_disagreement = variance.max(0.0).sqrt().clamp(0.0, 1.0);
     let consensus = (1.0 - 2.0 * score_disagreement).clamp(0.0, 1.0);
     let support_ratio = view_support as f32 / config.views.len() as f32;
-    let evidence_confidence = (1.0
-        / (1.0 + cluster.representative.estimated_false_matches.max(0.0)))
-        as f32;
+    let evidence_confidence =
+        (1.0 / (1.0 + cluster.representative.estimated_false_matches.max(0.0))) as f32;
     let base = 0.55 * weighted_raw_score
         + 0.16 * weighted_edit_similarity
         + 0.14 * weighted_query_coverage
         + 0.08 * weighted_chain_consistency
         + 0.07 * evidence_confidence;
-    let fused_score =
-        (base * (0.68 + 0.22 * support_ratio + 0.10 * consensus)).clamp(0.0, 1.0);
+    let fused_score = (base * (0.68 + 0.22 * support_ratio + 0.10 * consensus)).clamp(0.0, 1.0);
     if fused_score < options.minimum_similarity {
         return None;
     }
@@ -580,7 +574,11 @@ fn fuse_cluster(
         .query_end
         .saturating_sub(cluster.representative.query_start)
         .max(1);
-    if matched_tokens < options.minimum_matched_tokens.min(representative_query_span) {
+    if matched_tokens
+        < options
+            .minimum_matched_tokens
+            .min(representative_query_span)
+    {
         return None;
     }
     match options.intent {
@@ -688,8 +686,7 @@ mod tests {
 
     #[test]
     fn consensus_views_rank_the_edited_source() {
-        let mut builder =
-            MultiViewIndexBuilder::new(MultiViewConfig::balanced()).expect("builder");
+        let mut builder = MultiViewIndexBuilder::new(MultiViewConfig::balanced()).expect("builder");
         builder
             .add_document(
                 "source.txt",
@@ -723,8 +720,7 @@ mod tests {
     #[test]
     fn persistence_preserves_consensus_results() {
         let text = "preserve every raw observation and document each transformation before comparing causal models";
-        let mut builder =
-            MultiViewIndexBuilder::new(MultiViewConfig::balanced()).expect("builder");
+        let mut builder = MultiViewIndexBuilder::new(MultiViewConfig::balanced()).expect("builder");
         builder.add_document("source.txt", text).expect("source");
         let index = builder.build().expect("index");
         let path = temporary_directory();

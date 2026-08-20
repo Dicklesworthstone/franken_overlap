@@ -7,58 +7,166 @@ use std::time::{Duration, Instant};
 
 use clap::Args;
 use fo_core::{
-    EvaluationOptions, Fingerprint, IndexBuilder, IndexConfig, LabeledScore,
-    NormalizationProfile, PrecisionRecallReport, SearchIntent, SearchOptions, normalize,
-    precision_recall_report, qgram_hashes,
+    EvaluationOptions, Fingerprint, IndexBuilder, IndexConfig, LabeledScore, NormalizationProfile,
+    PrecisionRecallReport, SearchIntent, SearchOptions, normalize, precision_recall_report,
+    qgram_hashes,
 };
 use serde::Serialize;
 
 type BenchResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 const COMMON_WORDS: &[&str] = &[
-    "analysis", "system", "evidence", "method", "result", "process", "model", "signal",
-    "record", "change", "measure", "structure", "value", "context", "source", "pattern",
-    "review", "compare", "observe", "estimate", "document", "sequence", "sample", "feature",
-    "robust", "careful", "repeat", "local", "global", "dynamic", "precise", "public",
+    "analysis",
+    "system",
+    "evidence",
+    "method",
+    "result",
+    "process",
+    "model",
+    "signal",
+    "record",
+    "change",
+    "measure",
+    "structure",
+    "value",
+    "context",
+    "source",
+    "pattern",
+    "review",
+    "compare",
+    "observe",
+    "estimate",
+    "document",
+    "sequence",
+    "sample",
+    "feature",
+    "robust",
+    "careful",
+    "repeat",
+    "local",
+    "global",
+    "dynamic",
+    "precise",
+    "public",
 ];
 
 const NOISE_WORDS: &[&str] = &[
-    "lantern", "harbor", "violet", "railway", "ceramic", "orchard", "copper", "winter",
-    "festival", "cabinet", "marble", "compass", "velvet", "meadow", "chimney", "saffron",
+    "lantern", "harbor", "violet", "railway", "ceramic", "orchard", "copper", "winter", "festival",
+    "cabinet", "marble", "compass", "velvet", "meadow", "chimney", "saffron",
 ];
 
 const TOPICS: &[&[&str]] = &[
     &[
-        "telescope", "observatory", "spectrum", "photon", "orbit", "galaxy", "stellar",
-        "aperture", "detector", "calibration", "exposure", "cosmic",
+        "telescope",
+        "observatory",
+        "spectrum",
+        "photon",
+        "orbit",
+        "galaxy",
+        "stellar",
+        "aperture",
+        "detector",
+        "calibration",
+        "exposure",
+        "cosmic",
     ],
     &[
-        "enzyme", "genome", "protein", "cellular", "assay", "mutation", "receptor",
-        "pathway", "tissue", "molecule", "clinical", "biological",
+        "enzyme",
+        "genome",
+        "protein",
+        "cellular",
+        "assay",
+        "mutation",
+        "receptor",
+        "pathway",
+        "tissue",
+        "molecule",
+        "clinical",
+        "biological",
     ],
     &[
-        "contract", "statute", "clause", "court", "filing", "issuer", "covenant",
-        "liability", "regulatory", "disclosure", "agreement", "precedent",
+        "contract",
+        "statute",
+        "clause",
+        "court",
+        "filing",
+        "issuer",
+        "covenant",
+        "liability",
+        "regulatory",
+        "disclosure",
+        "agreement",
+        "precedent",
     ],
     &[
-        "compiler", "kernel", "memory", "vector", "thread", "runtime", "dispatch",
-        "cache", "buffer", "instruction", "latency", "throughput",
+        "compiler",
+        "kernel",
+        "memory",
+        "vector",
+        "thread",
+        "runtime",
+        "dispatch",
+        "cache",
+        "buffer",
+        "instruction",
+        "latency",
+        "throughput",
     ],
     &[
-        "market", "portfolio", "return", "liquidity", "issuer", "yield", "spread",
-        "valuation", "risk", "position", "capital", "transaction",
+        "market",
+        "portfolio",
+        "return",
+        "liquidity",
+        "issuer",
+        "yield",
+        "spread",
+        "valuation",
+        "risk",
+        "position",
+        "capital",
+        "transaction",
     ],
     &[
-        "weather", "pressure", "rainfall", "climate", "temperature", "station",
-        "forecast", "humidity", "storm", "atmosphere", "seasonal", "sensor",
+        "weather",
+        "pressure",
+        "rainfall",
+        "climate",
+        "temperature",
+        "station",
+        "forecast",
+        "humidity",
+        "storm",
+        "atmosphere",
+        "seasonal",
+        "sensor",
     ],
     &[
-        "building", "plumbing", "ventilation", "electrical", "foundation", "contractor",
-        "equipment", "inspection", "material", "installation", "geometry", "site",
+        "building",
+        "plumbing",
+        "ventilation",
+        "electrical",
+        "foundation",
+        "contractor",
+        "equipment",
+        "inspection",
+        "material",
+        "installation",
+        "geometry",
+        "site",
     ],
     &[
-        "language", "sentence", "token", "corpus", "semantic", "lexical", "paragraph",
-        "translation", "grammar", "phrase", "document", "alignment",
+        "language",
+        "sentence",
+        "token",
+        "corpus",
+        "semantic",
+        "lexical",
+        "paragraph",
+        "translation",
+        "grammar",
+        "phrase",
+        "document",
+        "alignment",
     ],
 ];
 
@@ -167,8 +275,7 @@ impl MethodAccumulator {
         query_count: usize,
         pair_count: usize,
     ) -> BenchResult<MethodReport> {
-        let quality =
-            precision_recall_report(&self.labeled_scores, EvaluationOptions::default())?;
+        let quality = precision_recall_report(&self.labeled_scores, EvaluationOptions::default())?;
         let false_positives = self
             .labeled_scores
             .iter()
@@ -210,11 +317,7 @@ pub fn run(command: SyntheticCommand) -> BenchResult<()> {
 
     let mut rng = DeterministicRng::new(command.seed);
     let documents = generate_documents(command.documents, &mut rng);
-    let queries = generate_queries(
-        &documents,
-        command.queries_per_document,
-        &mut rng,
-    );
+    let queries = generate_queries(&documents, command.queries_per_document, &mut rng);
     let pair_count = documents.len().saturating_mul(queries.len());
 
     let index_start = Instant::now();
@@ -294,15 +397,9 @@ pub fn run(command: SyntheticCommand) -> BenchResult<()> {
         let query_simhash = simhash(&normalized_query.tokens, 5)?;
         let simhash_scores = document_simhashes
             .iter()
-            .map(|&document| {
-                1.0 - f64::from((query_simhash ^ document).count_ones()) / 64.0
-            })
+            .map(|&document| 1.0 - f64::from((query_simhash ^ document).count_ones()) / 64.0)
             .collect::<Vec<_>>();
-        simhash_method.observe(
-            &simhash_scores,
-            query.source_document,
-            started.elapsed(),
-        );
+        simhash_method.observe(&simhash_scores, query.source_document, started.elapsed());
     }
 
     if let Some(path) = &command.labeled_scores {
@@ -534,7 +631,10 @@ fn simhash(tokens: &[u32], qgram: usize) -> fo_core::Result<u64> {
 }
 
 fn write_labeled_scores(path: &Path, scores: &[LabeledScore]) -> BenchResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let mut output = fs::File::create(path)?;
@@ -547,7 +647,10 @@ fn write_labeled_scores(path: &Path, scores: &[LabeledScore]) -> BenchResult<()>
 }
 
 fn write_report(path: &Path, report: &SyntheticBenchmarkReport) -> BenchResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     fs::write(path, serde_json::to_vec_pretty(report)?)?;
@@ -646,8 +749,7 @@ mod tests {
         let source_hash = simhash(&source.tokens, 3).expect("source hash");
         let unrelated_hash = simhash(&unrelated.tokens, 3).expect("unrelated hash");
         assert!(
-            (query_hash ^ source_hash).count_ones()
-                < (query_hash ^ unrelated_hash).count_ones()
+            (query_hash ^ source_hash).count_ones() < (query_hash ^ unrelated_hash).count_ones()
         );
     }
 }

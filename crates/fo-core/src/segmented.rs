@@ -239,12 +239,14 @@ impl SegmentedIndex {
                 deleted: false,
             });
         }
-        next.next_segment_id = next.next_segment_id.checked_add(1).ok_or_else(|| {
-            FoError::InvalidConfig("segment id space is exhausted".to_owned())
-        })?;
-        next.generation = next.generation.checked_add(1).ok_or_else(|| {
-            FoError::InvalidConfig("manifest generation is exhausted".to_owned())
-        })?;
+        next.next_segment_id = next
+            .next_segment_id
+            .checked_add(1)
+            .ok_or_else(|| FoError::InvalidConfig("segment id space is exhausted".to_owned()))?;
+        next.generation = next
+            .generation
+            .checked_add(1)
+            .ok_or_else(|| FoError::InvalidConfig("manifest generation is exhausted".to_owned()))?;
         next.segments.push(descriptor.clone());
         validate_manifest(&next)?;
         if let Err(error) = write_manifest(&self.directory, &next) {
@@ -378,10 +380,8 @@ impl SegmentedIndex {
             let path = self.directory.join(&filename);
             let mut builder = IndexBuilder::new(next.config.clone())?;
             for document in &active_documents {
-                builder.add_normalized_document(
-                    document.path.clone(),
-                    document.normalized.clone(),
-                )?;
+                builder
+                    .add_normalized_document(document.path.clone(), document.normalized.clone())?;
             }
             let index = builder.build()?;
             index.save(&path)?;
@@ -424,9 +424,10 @@ impl SegmentedIndex {
             document.local_document_id = Some(local);
         }
         next.segments = new_descriptor.iter().cloned().collect();
-        next.generation = next.generation.checked_add(1).ok_or_else(|| {
-            FoError::InvalidConfig("manifest generation is exhausted".to_owned())
-        })?;
+        next.generation = next
+            .generation
+            .checked_add(1)
+            .ok_or_else(|| FoError::InvalidConfig("manifest generation is exhausted".to_owned()))?;
         validate_manifest(&next)?;
         if let Err(error) = write_manifest(&self.directory, &next) {
             if let Some(path) = new_segment_path {
@@ -436,7 +437,9 @@ impl SegmentedIndex {
         }
         self.manifest = next;
 
-        let retained = new_descriptor.as_ref().map(|segment| segment.filename.as_str());
+        let retained = new_descriptor
+            .as_ref()
+            .map(|segment| segment.filename.as_str());
         let mut cleanup_failures = Vec::new();
         for descriptor in &old_descriptors {
             if Some(descriptor.filename.as_str()) == retained {
@@ -603,8 +606,7 @@ fn active_documents_by_segment(
 
 fn stable_cross_segment_score(result: &SearchResult, intent: SearchIntent) -> f32 {
     let length = 1.0 - (-(result.matched_tokens as f32) / 32.0).exp();
-    let false_match_confidence =
-        (1.0 / (1.0 + result.estimated_false_matches.max(0.0))) as f32;
+    let false_match_confidence = (1.0 / (1.0 + result.estimated_false_matches.max(0.0))) as f32;
     let evidence = (0.55 * result.edit_similarity
         + 0.16 * result.chain_consistency
         + 0.12 * length
@@ -794,8 +796,8 @@ fn validate_document_path(path: &str) -> Result<()> {
 fn validate_segment_filename(filename: &str) -> Result<()> {
     let path = Path::new(filename);
     let mut components = path.components();
-    let one_normal = matches!(components.next(), Some(Component::Normal(_)))
-        && components.next().is_none();
+    let one_normal =
+        matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none();
     if !one_normal || !filename.ends_with(".foidx") {
         return Err(FoError::InvalidIndex(format!(
             "unsafe segment filename {filename:?}"
@@ -833,10 +835,7 @@ fn write_manifest(directory: &Path, manifest: &SegmentedManifest) -> Result<()> 
         FoError::InvalidConfig(format!("could not serialize segmented manifest: {error}"))
     })?;
     let sequence = TEMPORARY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let temporary = directory.join(format!(
-        ".manifest.tmp-{}-{sequence}",
-        std::process::id()
-    ));
+    let temporary = directory.join(format!(".manifest.tmp-{}-{sequence}", std::process::id()));
     let destination = directory.join(MANIFEST_FILE);
     let file = File::create(&temporary).map_err(|error| FoError::io(&temporary, error))?;
     let mut writer = BufWriter::new(file);
@@ -910,8 +909,7 @@ impl WriterLock {
                     path.display()
                 ))
             })?;
-        writeln!(file, "pid={}", std::process::id())
-            .map_err(|error| FoError::io(&path, error))?;
+        writeln!(file, "pid={}", std::process::id()).map_err(|error| FoError::io(&path, error))?;
         file.sync_all().map_err(|error| FoError::io(&path, error))?;
         Ok(Self { path })
     }

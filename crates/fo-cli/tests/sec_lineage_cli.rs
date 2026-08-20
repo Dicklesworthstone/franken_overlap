@@ -80,10 +80,9 @@ fn builds_a_filing_history_alert_and_lineage_edge() {
         String::from_utf8_lossy(&command.stderr)
     );
 
-    let report: serde_json::Value = serde_json::from_slice(
-        &fs::read(output.join("report.json")).expect("report"),
-    )
-    .expect("parse report");
+    let report: serde_json::Value =
+        serde_json::from_slice(&fs::read(output.join("report.json")).expect("report"))
+            .expect("parse report");
     assert_eq!(report["eligible_sections"], 3);
     assert_eq!(report["analyzed_targets"], 1);
     assert_eq!(
@@ -94,15 +93,29 @@ fn builds_a_filing_history_alert_and_lineage_edge() {
         report["targets"][0]["best_previous"]["source_id"],
         "CIK0000000001-2024-item1a"
     );
-    assert!(report["targets"][0]["alerts"].as_array().is_some_and(|alerts| !alerts.is_empty()));
-    assert!(report["lineage"]["edges"].as_u64().is_some_and(|edges| edges >= 1));
+    assert!(
+        report["targets"][0]["alerts"]
+            .as_array()
+            .is_some_and(|alerts| !alerts.is_empty())
+    );
+    assert!(
+        report["lineage"]["edges"]
+            .as_u64()
+            .is_some_and(|edges| edges >= 1)
+    );
 
-    let lineage: serde_json::Value = serde_json::from_slice(
-        &fs::read(output.join("lineage.json")).expect("lineage"),
-    )
-    .expect("parse lineage");
-    assert_eq!(lineage["nodes"].as_object().map(|nodes| nodes.len()), Some(3));
-    assert!(lineage["edges"].as_object().is_some_and(|edges| !edges.is_empty()));
+    let lineage: serde_json::Value =
+        serde_json::from_slice(&fs::read(output.join("lineage.json")).expect("lineage"))
+            .expect("parse lineage");
+    assert_eq!(
+        lineage["nodes"].as_object().map(|nodes| nodes.len()),
+        Some(3)
+    );
+    assert!(
+        lineage["edges"]
+            .as_object()
+            .is_some_and(|edges| !edges.is_empty())
+    );
     assert!(output.join("SUMMARY.md").is_file());
     assert!(output.join("artifacts.json").is_file());
     let result_file = report["targets"][0]["results_file"]
@@ -138,7 +151,10 @@ fn add_document(
         metadata: BTreeMap::from([
             ("cik".to_owned(), "1".to_owned()),
             ("form".to_owned(), "10-K".to_owned()),
-            ("section_title".to_owned(), "Item 1A Risk Factors".to_owned()),
+            (
+                "section_title".to_owned(),
+                "Item 1A Risk Factors".to_owned(),
+            ),
             ("parent_id".to_owned(), id.replace("-item1a", "")),
         ]),
     });

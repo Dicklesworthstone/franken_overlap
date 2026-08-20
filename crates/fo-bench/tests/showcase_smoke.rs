@@ -78,8 +78,7 @@ fn existing_showcase_emits_controlled_and_multi_positive_queries() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let report: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse report");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse report");
     assert_eq!(report["raw"]["documents"], 3);
     assert_eq!(report["searchable"]["documents"], 3);
     assert_eq!(report["scenarios"]["queries"], 24);

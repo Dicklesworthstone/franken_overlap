@@ -329,11 +329,7 @@ fn run() -> CliResult<()> {
             .collect::<Result<Vec<_>, String>>()
     });
     let mut outcomes = outcomes.map_err(invalid)?;
-    outcomes.sort_unstable_by(|left, right| {
-        left.analysis
-            .target_id
-            .cmp(&right.analysis.target_id)
-    });
+    outcomes.sort_unstable_by(|left, right| left.analysis.target_id.cmp(&right.analysis.target_id));
 
     let mut graph = LineageGraph::new();
     for section in &sections {
@@ -356,22 +352,14 @@ fn run() -> CliResult<()> {
         result_paths.push(result_path);
         alerts.extend(outcome.analysis.alerts.iter().cloned());
         for edge in &outcome.edges {
-            let mut evidence = LineageEvidence::from_search_result(
-                &edge.result,
-                unix_timestamp(),
-            );
+            let mut evidence = LineageEvidence::from_search_result(&edge.result, unix_timestamp());
             evidence
                 .metadata
                 .insert("source_kind".to_owned(), edge.source_kind.to_owned());
             evidence
                 .metadata
                 .insert("analysis".to_owned(), "fo-sec-lineage".to_owned());
-            graph.add_evidence(
-                &edge.source_id,
-                &edge.target_id,
-                edge.relation,
-                evidence,
-            )?;
+            graph.add_evidence(&edge.source_id, &edge.target_id, edge.relation, evidence)?;
         }
     }
     graph.validate()?;
@@ -425,9 +413,18 @@ fn run() -> CliResult<()> {
         println!("Issuer/item histories:  {}", report.issuer_item_histories);
         println!("Analyzed targets:       {}", report.analyzed_targets);
         println!("Alerts:                 {}", report.alerts);
-        println!("Lineage nodes / edges:  {} / {}", report.lineage.nodes, report.lineage.edges);
-        println!("Report:                 {}", command.output.join("report.json").display());
-        println!("Summary:                {}", command.output.join("SUMMARY.md").display());
+        println!(
+            "Lineage nodes / edges:  {} / {}",
+            report.lineage.nodes, report.lineage.edges
+        );
+        println!(
+            "Report:                 {}",
+            command.output.join("report.json").display()
+        );
+        println!(
+            "Summary:                {}",
+            command.output.join("SUMMARY.md").display()
+        );
     }
     Ok(())
 }
@@ -458,10 +455,7 @@ fn validate_command(command: &Cli) -> CliResult<()> {
             command.minimum_edge_query_coverage,
         ),
         ("new_language_coverage", command.new_language_coverage),
-        (
-            "material_change_coverage",
-            command.material_change_coverage,
-        ),
+        ("material_change_coverage", command.material_change_coverage),
         (
             "material_change_similarity",
             command.material_change_similarity,
@@ -470,10 +464,7 @@ fn validate_command(command: &Cli) -> CliResult<()> {
         ("high_reuse_similarity", command.high_reuse_similarity),
         ("legacy_language_margin", command.legacy_language_margin),
         ("peer_migration_score", command.peer_migration_score),
-        (
-            "peer_migration_coverage",
-            command.peer_migration_coverage,
-        ),
+        ("peer_migration_coverage", command.peer_migration_coverage),
     ] {
         if !value.is_finite() || !(0.0..=1.0).contains(&value) {
             return Err(invalid(format!("{name} must lie in [0, 1]")));
@@ -526,9 +517,8 @@ fn load_sections(
                 record.id
             )));
         }
-        let body = String::from_utf8(bytes).map_err(|error| {
-            invalid(format!("section {} is not UTF-8: {error}", record.id))
-        })?;
+        let body = String::from_utf8(bytes)
+            .map_err(|error| invalid(format!("section {} is not UTF-8: {error}", record.id)))?;
         if body.chars().count() < options.minimum_section_characters {
             continue;
         }
@@ -732,7 +722,12 @@ fn analyze_target(
     let review_command = format!(
         "fo-review-report {} {} {} --target-id {} --output reviews/{}",
         shell_quote(&corpus_root.display().to_string()),
-        shell_quote(&corpus_root.join(&specimen_relative_path).display().to_string()),
+        shell_quote(
+            &corpus_root
+                .join(&specimen_relative_path)
+                .display()
+                .to_string()
+        ),
         shell_quote(&output_root.join(&result_name).display().to_string()),
         shell_quote(&target.record.id),
         shell_quote(&sanitize_component(&target.record.id)),
@@ -768,7 +763,7 @@ fn search_subset(
     target: &SecSection,
     candidate_indices: &[usize],
     sections: &[SecSection],
-    options: &AnalysisOptions,
+    _options: &AnalysisOptions,
 ) -> CliResult<Option<fo_core::DomainSearchReport>> {
     if candidate_indices.is_empty() {
         return Ok(None);
@@ -815,9 +810,7 @@ fn classify_alerts(
             None,
             "No earlier filing item exists in the loaded corpus.".to_owned(),
         )),
-        None
-            if status == Some(DomainSearchStatus::InsufficientInformativeEvidence) =>
-        {
+        None if status == Some(DomainSearchStatus::InsufficientInformativeEvidence) => {
             alerts.push(alert(
                 AlertKind::InsufficientDistinctiveEvidence,
                 AlertSeverity::Review,
@@ -936,7 +929,9 @@ fn alert(
     source: Option<SourceMatch>,
     message: String,
 ) -> SecAlert {
-    let source_id = source.as_ref().map_or("none", |source| source.source_id.as_str());
+    let source_id = source
+        .as_ref()
+        .map_or("none", |source| source.source_id.as_str());
     SecAlert {
         id: format!(
             "alert-{:016x}",

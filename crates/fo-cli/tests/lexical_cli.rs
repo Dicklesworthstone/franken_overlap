@@ -53,9 +53,11 @@ fn builds_and_queries_a_fielded_index() {
     let results: serde_json::Value =
         serde_json::from_slice(&query.stdout).expect("parse query JSON");
     assert_eq!(results[0]["external_id"], "observatory.txt");
-    assert!(results[0]["explanation"]["exact_phrase_matches"]
-        .as_u64()
-        .is_some_and(|matches| matches > 0));
+    assert!(
+        results[0]["explanation"]["exact_phrase_matches"]
+            .as_u64()
+            .is_some_and(|matches| matches > 0)
+    );
 
     fs::remove_dir_all(root).ok();
 }

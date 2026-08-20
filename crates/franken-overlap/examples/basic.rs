@@ -20,7 +20,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..SearchOptions::default()
         },
     )? {
-        println!("{} {:.3}: {}", hit.path, hit.combined_score, hit.matched_text);
+        println!(
+            "{} {:.3}: {}",
+            hit.path, hit.combined_score, hit.matched_text
+        );
     }
     Ok(())
 }

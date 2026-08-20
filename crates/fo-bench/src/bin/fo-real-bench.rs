@@ -26,8 +26,8 @@ type BenchResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 const SCHEMA_VERSION: u32 = 1;
 const MAX_QUERY_PROFILES: usize = 8;
 const NOISE_WORDS: &[&str] = &[
-    "lantern", "railway", "orchard", "ceramic", "violet", "meadow", "saffron", "cabinet",
-    "marble", "festival", "chimney", "harbor", "compass", "velvet", "kitchen", "weather",
+    "lantern", "railway", "orchard", "ceramic", "violet", "meadow", "saffron", "cabinet", "marble",
+    "festival", "chimney", "harbor", "compass", "velvet", "kitchen", "weather",
 ];
 
 #[derive(Debug, Parser)]
@@ -352,10 +352,7 @@ fn run() -> BenchResult<()> {
         .iter()
         .map(|document| fingerprint_set(&document.tokens, 5))
         .collect::<fo_core::Result<Vec<_>>>()?;
-    let document_simhashes = document_qgrams
-        .iter()
-        .map(simhash)
-        .collect::<Vec<_>>();
+    let document_simhashes = document_qgrams.iter().map(simhash).collect::<Vec<_>>();
 
     let mut exact = MethodAccumulator::default();
     let mut jaccard = MethodAccumulator::default();
@@ -430,7 +427,7 @@ fn run() -> BenchResult<()> {
             minimum_query_coverage: 0.0,
             minimum_source_coverage: 0.0,
             direct_fallback_work_limit: 500_000_000,
-            short_query_candidates: documents.len().min(4_096).max(8),
+            short_query_candidates: documents.len().clamp(8, 4_096),
             minimum_similarity: 0.0,
             ..SearchOptions::default()
         };
@@ -678,10 +675,7 @@ fn generate_queries(
 ) -> Vec<GeneratedQuery> {
     let mut source_indices = (0..documents.len()).collect::<Vec<_>>();
     source_indices.sort_unstable_by_key(|&index| {
-        stable_hash(
-            &documents[index].external_id,
-            seed ^ 0xa5a5_a5a5_a5a5_a5a5,
-        )
+        stable_hash(&documents[index].external_id, seed ^ 0xa5a5_a5a5_a5a5_a5a5)
     });
     source_indices.truncate(source_count);
     let mut queries = Vec::with_capacity(source_count.saturating_mul(queries_per_document));
@@ -841,8 +835,8 @@ fn mutate_passage(
             let mut selected = BTreeSet::new();
             let stride = (passage.len() / 12).max(1);
             for index in (0..passage.len()).step_by(stride) {
-                let word = passage[index]
-                    .trim_matches(|character: char| !character.is_alphanumeric());
+                let word =
+                    passage[index].trim_matches(|character: char| !character.is_alphanumeric());
                 if word.chars().count() >= 4 {
                     selected.insert(word.to_owned());
                 }
@@ -1058,7 +1052,10 @@ fn enforce_gates(command: &Cli, report: &RealBenchmarkReport) -> BenchResult<()>
 }
 
 fn write_scores(path: &Path, scores: &[ScoredPair]) -> BenchResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let temporary = path.with_extension(format!(

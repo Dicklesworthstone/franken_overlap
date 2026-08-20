@@ -198,10 +198,7 @@ impl ClaimComparison {
         for (name, value) in [
             ("minimum_micro_auprc_delta", self.minimum_micro_auprc_delta),
             ("minimum_macro_auprc_delta", self.minimum_macro_auprc_delta),
-            (
-                "minimum_recall_at_1_delta",
-                self.minimum_recall_at_1_delta,
-            ),
+            ("minimum_recall_at_1_delta", self.minimum_recall_at_1_delta),
             ("minimum_mrr_delta", self.minimum_mrr_delta),
             (
                 "minimum_micro_delta_lower_bound",
@@ -263,8 +260,7 @@ impl MetricDelta {
         Self {
             micro_auprc: challenger.micro_auprc - baseline.micro_auprc,
             macro_auprc: challenger.macro_auprc - baseline.macro_auprc,
-            mean_reciprocal_rank: challenger.mean_reciprocal_rank
-                - baseline.mean_reciprocal_rank,
+            mean_reciprocal_rank: challenger.mean_reciprocal_rank - baseline.mean_reciprocal_rank,
             recall_at_1: challenger.recall_at_1 - baseline.recall_at_1,
             ndcg_at_10: challenger.ndcg_at_10 - baseline.ndcg_at_10,
         }
@@ -381,8 +377,8 @@ pub fn evaluate_claims(
             "score file has no rows for corpus size {corpus_size}"
         )));
     }
-    let familywise_confidence = 1.0
-        - (1.0 - manifest.confidence_level) / manifest.comparisons.len().max(1) as f64;
+    let familywise_confidence =
+        1.0 - (1.0 - manifest.confidence_level) / manifest.comparisons.len().max(1) as f64;
     let mut comparisons = Vec::with_capacity(manifest.comparisons.len());
     for (index, comparison) in manifest.comparisons.iter().enumerate() {
         comparisons.push(evaluate_comparison(
@@ -413,7 +409,10 @@ pub fn evaluate_claims(
 }
 
 pub fn write_default_manifest(path: &Path) -> ClaimResult<()> {
-    atomic_write(path, &serde_json::to_vec_pretty(&ClaimGateManifest::default())?)?;
+    atomic_write(
+        path,
+        &serde_json::to_vec_pretty(&ClaimGateManifest::default())?,
+    )?;
     Ok(())
 }
 
@@ -464,7 +463,12 @@ fn evaluate_comparison(
     let (worst_profile, worst_profile_macro_delta) = profiles
         .iter()
         .min_by(|left, right| left.delta.macro_auprc.total_cmp(&right.delta.macro_auprc))
-        .map(|profile| (Some(profile.profile.clone()), Some(profile.delta.macro_auprc)))
+        .map(|profile| {
+            (
+                Some(profile.profile.clone()),
+                Some(profile.delta.macro_auprc),
+            )
+        })
         .unwrap_or((None, None));
     let baseline_p95_ms = method_p95(scale, &comparison.baseline_method)?;
     let challenger_p95_ms = method_p95(scale, &comparison.challenger_method)?;
@@ -519,7 +523,8 @@ fn evaluate_comparison(
     if eligible.len() < manifest.minimum_queries {
         uncertainties.push(format!(
             "only {} paired queries were eligible; at least {} were required",
-            eligible.len(), manifest.minimum_queries
+            eligible.len(),
+            manifest.minimum_queries
         ));
     }
     require_lower_bound(
@@ -541,9 +546,7 @@ fn evaluate_comparison(
         comparison.minimum_recall_at_1_delta_lower_bound,
     );
     match worst_profile_macro_delta {
-        Some(delta)
-            if delta < -comparison.maximum_worst_profile_macro_regression =>
-        {
+        Some(delta) if delta < -comparison.maximum_worst_profile_macro_regression => {
             failures.push(format!(
                 "worst eligible profile {:?} macro AUPRC regressed by {:.6}, exceeding the {:.6} limit",
                 worst_profile,
@@ -651,10 +654,7 @@ impl QueryPair {
             query_id,
             profile,
             labels,
-            baseline_scores: rows
-                .iter()
-                .map(|row| row.scores[baseline_method])
-                .collect(),
+            baseline_scores: rows.iter().map(|row| row.scores[baseline_method]).collect(),
             challenger_scores: rows
                 .iter()
                 .map(|row| row.scores[challenger_method])
@@ -669,10 +669,7 @@ enum ScoreSide {
     Challenger,
 }
 
-fn evaluate_query_pairs(
-    queries: &[QueryPair],
-    side: ScoreSide,
-) -> ClaimResult<MetricSnapshot> {
+fn evaluate_query_pairs(queries: &[QueryPair], side: ScoreSide) -> ClaimResult<MetricSnapshot> {
     let examples = query_examples(queries, side, None);
     metric_snapshot(&grouped_evaluation_report(&examples, evaluation_options())?)
 }
@@ -683,7 +680,10 @@ fn profile_comparisons(
 ) -> ClaimResult<Vec<ProfileComparison>> {
     let mut grouped = BTreeMap::<&str, Vec<&QueryPair>>::new();
     for query in queries {
-        grouped.entry(query.profile.as_str()).or_default().push(query);
+        grouped
+            .entry(query.profile.as_str())
+            .or_default()
+            .push(query);
     }
     let mut output = Vec::new();
     for (profile, members) in grouped {
@@ -705,10 +705,7 @@ fn profile_comparisons(
     Ok(output)
 }
 
-fn evaluate_query_refs(
-    queries: &[&QueryPair],
-    side: ScoreSide,
-) -> ClaimResult<MetricSnapshot> {
+fn evaluate_query_refs(queries: &[&QueryPair], side: ScoreSide) -> ClaimResult<MetricSnapshot> {
     let mut examples = Vec::new();
     for query in queries {
         let scores = match side {
@@ -887,12 +884,7 @@ fn require_minimum(failures: &mut Vec<String>, name: &str, observed: f64, minimu
     }
 }
 
-fn require_lower_bound(
-    uncertainties: &mut Vec<String>,
-    name: &str,
-    observed: f64,
-    minimum: f64,
-) {
+fn require_lower_bound(uncertainties: &mut Vec<String>, name: &str, observed: f64, minimum: f64) {
     if observed < minimum {
         uncertainties.push(format!(
             "family-wise lower bound for {name} was {:.6}, below the required {:.6}",

@@ -174,7 +174,10 @@ fn run() -> CliResult<()> {
             report.analysis.suppressed_by_posting_cap_occurrences,
             report.analysis.suppressed_by_work_budget_occurrences,
         );
-        println!("Mean retained IDF:      {:.3}", report.analysis.mean_retained_idf);
+        println!(
+            "Mean retained IDF:      {:.3}",
+            report.analysis.mean_retained_idf
+        );
         if !command.plan_only {
             for (rank, result) in report.results.iter().enumerate() {
                 println!(
@@ -199,9 +202,7 @@ fn specimen_text(path: Option<&Path>, inline: Option<String>) -> CliResult<Strin
         (Some(path), None) => Ok(fs::read_to_string(path)?),
         (None, Some(text)) => Ok(text),
         (None, None) => Err(invalid("provide a specimen file or --text")),
-        (Some(_), Some(_)) => Err(invalid(
-            "specimen file and --text are mutually exclusive",
-        )),
+        (Some(_), Some(_)) => Err(invalid("specimen file and --text are mutually exclusive")),
     }
 }
 

@@ -334,10 +334,7 @@ fn load_corpus(root: &Path, maximum_bytes: u64) -> CliResult<(Vec<LexicalDocumen
     collect_loaded(loaded)
 }
 
-fn provider_tags(
-    manifest: &CorpusManifest,
-    document: &fo_corpus::CorpusDocument,
-) -> Vec<String> {
+fn provider_tags(manifest: &CorpusManifest, document: &fo_corpus::CorpusDocument) -> Vec<String> {
     let mut tags = vec![format!("{:?}", manifest.provider).to_ascii_lowercase()];
     for key in ["form", "tickers", "subjects"] {
         if let Some(value) = document.metadata.get(key) {
@@ -418,7 +415,11 @@ fn load_directory_document(
     for component in Path::new(&relative).components() {
         if let Component::Normal(value) = component
             && let Some(value) = value.to_str()
-            && value != path.file_name().and_then(|name| name.to_str()).unwrap_or_default()
+            && value
+                != path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or_default()
         {
             tags.push(value.to_owned());
         }

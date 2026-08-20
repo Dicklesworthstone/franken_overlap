@@ -574,13 +574,11 @@ impl LexicalIndex {
             .iter()
             .filter_map(|spec| {
                 let entry = self.lookup(&spec.term)?;
-                (entry.postings.len() <= options.maximum_postings_per_term)
-                    .then_some((spec, entry))
+                (entry.postings.len() <= options.maximum_postings_per_term).then_some((spec, entry))
             })
             .collect::<Vec<_>>();
         candidate_terms.sort_unstable_by(|(left_spec, left), (right_spec, right)| {
-            left
-                .document_frequency
+            left.document_frequency
                 .cmp(&right.document_frequency)
                 .then_with(|| right_spec.count.cmp(&left_spec.count))
                 .then_with(|| left.term.cmp(&right.term))
@@ -644,9 +642,7 @@ impl LexicalIndex {
                 && query
                     .clauses
                     .iter()
-                    .filter(|clause| {
-                        clause.occur != LexicalOccur::MustNot && clause.phrase
-                    })
+                    .filter(|clause| clause.occur != LexicalOccur::MustNot && clause.phrase)
                     .any(|clause| !self.clause_matches(document_id, clause))
             {
                 continue;
@@ -679,8 +675,9 @@ impl LexicalIndex {
                 let Some(posting) = entry.posting(document_id) else {
                     continue;
                 };
-                let idf = inverse_document_frequency(document_count, entry.document_frequency as f32)
-                    * query_frequency_weight(spec.count);
+                let idf =
+                    inverse_document_frequency(document_count, entry.document_frequency as f32)
+                        * query_frequency_weight(spec.count);
                 let mut matched = false;
                 if spec.field_mask & FIELD_TITLE != 0 && !posting.title_positions.is_empty() {
                     let contribution = bm25_field(
@@ -756,9 +753,8 @@ impl LexicalIndex {
                         })
                         .sum::<f32>()
                         / clause.terms.len().max(1) as f32;
-                    explanation.phrase_boost += options.phrase_boost
-                        * (1.0 + phrase_idf)
-                        * (occurrences as f32).ln_1p();
+                    explanation.phrase_boost +=
+                        options.phrase_boost * (1.0 + phrase_idf) * (occurrences as f32).ln_1p();
                 }
             }
 
@@ -769,8 +765,7 @@ impl LexicalIndex {
                     explanation.proximity_boost = options.proximity_boost * tightness.min(1.0);
                 }
             }
-            explanation.coverage_boost = options.coverage_boost
-                * explanation.matched_terms as f32
+            explanation.coverage_boost = options.coverage_boost * explanation.matched_terms as f32
                 / total_positive_terms as f32;
             let score = explanation.title_bm25
                 + explanation.body_bm25
@@ -808,7 +803,10 @@ impl LexicalIndex {
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         self.validate()?;
         let path = path.as_ref();
-        if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
             fs::create_dir_all(parent).map_err(|error| FoError::io(parent, error))?;
         }
         let bytes = serde_json::to_vec(self).map_err(|error| {
@@ -820,8 +818,9 @@ impl LexicalIndex {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         let bytes = fs::read(path).map_err(|error| FoError::io(path, error))?;
-        let index = serde_json::from_slice::<Self>(&bytes)
-            .map_err(|error| FoError::InvalidIndex(format!("invalid lexical index JSON: {error}")))?;
+        let index = serde_json::from_slice::<Self>(&bytes).map_err(|error| {
+            FoError::InvalidIndex(format!("invalid lexical index JSON: {error}"))
+        })?;
         index.validate()?;
         Ok(index)
     }
@@ -854,7 +853,10 @@ impl LexicalIndex {
                 if span.start > span.end
                     || span.end as usize > document.body.len()
                     || span.start < previous_end
-                    || document.body.get(span.start as usize..span.end as usize).is_none()
+                    || document
+                        .body
+                        .get(span.start as usize..span.end as usize)
+                        .is_none()
                 {
                     return Err(FoError::InvalidIndex(format!(
                         "lexical document {} contains an invalid body span",
@@ -908,9 +910,7 @@ impl LexicalIndex {
             ("average_tags_length", self.average_tags_length),
         ] {
             if !value.is_finite() || value < 0.0 {
-                return Err(FoError::InvalidIndex(format!(
-                    "lexical {name} is invalid"
-                )));
+                return Err(FoError::InvalidIndex(format!("lexical {name} is invalid")));
             }
         }
         Ok(())
@@ -940,7 +940,10 @@ impl LexicalIndex {
         let postings = clause
             .terms
             .iter()
-            .map(|term| self.lookup(term).and_then(|entry| entry.posting(document_id)))
+            .map(|term| {
+                self.lookup(term)
+                    .and_then(|entry| entry.posting(document_id))
+            })
             .collect::<Option<Vec<_>>>();
         let Some(postings) = postings else {
             return 0;
@@ -960,7 +963,9 @@ impl LexicalIndex {
                     .enumerate()
                     .skip(1)
                     .all(|(offset, positions)| {
-                        positions.binary_search(&start.saturating_add(offset as u32)).is_ok()
+                        positions
+                            .binary_search(&start.saturating_add(offset as u32))
+                            .is_ok()
                     })
                 {
                     total += 1;
@@ -1254,10 +1259,7 @@ fn parse_field_prefix(input: &str, cursor: &mut usize) -> LexicalField {
 }
 
 fn next_char_len(input: &str, cursor: usize) -> usize {
-    input[cursor..]
-        .chars()
-        .next()
-        .map_or(1, char::len_utf8)
+    input[cursor..].chars().next().map_or(1, char::len_utf8)
 }
 
 fn compact_snippet(text: &str, maximum_characters: usize) -> String {
@@ -1280,7 +1282,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     fs::write(&temporary, bytes).map_err(|error| FoError::io(&temporary, error))?;
     match fs::rename(&temporary, path) {
         Ok(()) => Ok(()),
-        Err(error) if path.exists() => {
+        Err(_error) if path.exists() => {
             fs::remove_file(path).map_err(|remove_error| FoError::io(path, remove_error))?;
             fs::rename(&temporary, path).map_err(|rename_error| FoError::io(path, rename_error))
         }
@@ -1295,8 +1297,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        LexicalDocumentInput, LexicalIndex, LexicalIndexBuilder, LexicalIndexConfig,
-        LexicalQuery, LexicalSearchOptions,
+        LexicalDocumentInput, LexicalIndex, LexicalIndexBuilder, LexicalIndexConfig, LexicalQuery,
+        LexicalSearchOptions,
     };
 
     fn document(id: &str, title: &str, body: &str, tags: &[&str]) -> LexicalDocumentInput {
@@ -1310,8 +1312,7 @@ mod tests {
     }
 
     fn fixture() -> LexicalIndex {
-        let mut builder =
-            LexicalIndexBuilder::new(LexicalIndexConfig::default()).expect("builder");
+        let mut builder = LexicalIndexBuilder::new(LexicalIndexConfig::default()).expect("builder");
         builder
             .add_document(document(
                 "observatory",
@@ -1342,10 +1343,7 @@ mod tests {
     #[test]
     fn exact_phrase_ranks_above_bag_of_words() {
         let results = fixture()
-            .search_text(
-                "\"copper shutters\"",
-                &LexicalSearchOptions::default(),
-            )
+            .search_text("\"copper shutters\"", &LexicalSearchOptions::default())
             .expect("search");
         assert_eq!(results[0].external_id, "observatory");
         assert!(results[0].explanation.exact_phrase_matches > 0);
@@ -1387,16 +1385,20 @@ mod tests {
         let loaded = LexicalIndex::load(&path).expect("load");
         fs::remove_file(path).ok();
         let options = LexicalSearchOptions::default();
-        let before = index.search_text("liquidity issuer", &options).expect("before");
-        let after = loaded.search_text("liquidity issuer", &options).expect("after");
+        let before = index
+            .search_text("liquidity issuer", &options)
+            .expect("before");
+        let after = loaded
+            .search_text("liquidity issuer", &options)
+            .expect("after");
         assert_eq!(before[0].external_id, after[0].external_id);
         assert_eq!(before[0].score, after[0].score);
     }
 
     #[test]
     fn parses_phrases_and_fields() {
-        let query = LexicalQuery::parse("+title:\"market risk\" -tag:cooking issuer")
-            .expect("query");
+        let query =
+            LexicalQuery::parse("+title:\"market risk\" -tag:cooking issuer").expect("query");
         assert_eq!(query.clauses.len(), 3);
         assert!(query.clauses[0].phrase);
     }

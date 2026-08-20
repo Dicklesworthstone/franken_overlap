@@ -105,7 +105,10 @@ impl Index {
 
 fn save_v2(index: &Index, path: &Path) -> Result<IndexFileStats> {
     validate_index_limits(index)?;
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent).map_err(|error| FoError::io(parent, error))?;
     }
     let temporary = temporary_path(path);
@@ -142,9 +145,12 @@ fn save_v2(index: &Index, path: &Path) -> Result<IndexFileStats> {
     for entry in &index.entries {
         let posting_count = checked_u32(entry.postings.len(), "posting count")?;
         let encoded_len = encoded_postings_len(&entry.postings)?;
-        posting_payload_bytes = posting_payload_bytes
-            .checked_add(encoded_len)
-            .ok_or_else(|| FoError::InvalidConfig("posting payload size overflows u64".to_owned()))?;
+        posting_payload_bytes =
+            posting_payload_bytes
+                .checked_add(encoded_len)
+                .ok_or_else(|| {
+                    FoError::InvalidConfig("posting payload size overflows u64".to_owned())
+                })?;
         write_u64(&mut writer, entry.fingerprint.hi)
             .and_then(|()| write_u64(&mut writer, entry.fingerprint.lo))
             .and_then(|()| write_u32(&mut writer, entry.document_frequency))
@@ -222,8 +228,7 @@ fn load_v2(path: &Path) -> Result<(Index, IndexFileStats)> {
             "unsupported v2 storage flags {storage_flags:#x} or nonzero reserved header"
         )));
     }
-    if storage_flags & STORAGE_FLAG_DELTA_VARINT == 0
-        || storage_flags & STORAGE_FLAG_CHECKSUM == 0
+    if storage_flags & STORAGE_FLAG_DELTA_VARINT == 0 || storage_flags & STORAGE_FLAG_CHECKSUM == 0
     {
         return Err(FoError::InvalidIndex(
             "v2 index lacks required delta-varint/checksum flags".to_owned(),
@@ -243,9 +248,8 @@ fn load_v2(path: &Path) -> Result<(Index, IndexFileStats)> {
             "entry count {entry_count_u64} exceeds a safe bound"
         )));
     }
-    let entry_count = usize::try_from(entry_count_u64).map_err(|_| {
-        FoError::InvalidIndex("entry count does not fit this platform".to_owned())
-    })?;
+    let entry_count = usize::try_from(entry_count_u64)
+        .map_err(|_| FoError::InvalidIndex("entry count does not fit this platform".to_owned()))?;
 
     let mut documents = Vec::with_capacity(document_count as usize);
     for expected_id in 0..document_count {
@@ -255,10 +259,10 @@ fn load_v2(path: &Path) -> Result<(Index, IndexFileStats)> {
                 "document id {id} appears where {expected_id} was expected"
             )));
         }
-        let document_path = read_string(&mut reader, file_len)
-            .map_err(|error| FoError::io(path, error))?;
-        let normalized_text = read_string(&mut reader, file_len)
-            .map_err(|error| FoError::io(path, error))?;
+        let document_path =
+            read_string(&mut reader, file_len).map_err(|error| FoError::io(path, error))?;
+        let normalized_text =
+            read_string(&mut reader, file_len).map_err(|error| FoError::io(path, error))?;
         let normalized = NormalizedText::from_stored(normalized_text);
         if normalized.tokens.len() > u32::MAX as usize {
             return Err(FoError::InvalidIndex(format!(
@@ -296,9 +300,12 @@ fn load_v2(path: &Path) -> Result<(Index, IndexFileStats)> {
             encoded_len,
             file_len,
         )?;
-        posting_payload_bytes = posting_payload_bytes
-            .checked_add(encoded_len)
-            .ok_or_else(|| FoError::InvalidIndex("posting payload size overflows u64".to_owned()))?;
+        posting_payload_bytes =
+            posting_payload_bytes
+                .checked_add(encoded_len)
+                .ok_or_else(|| {
+                    FoError::InvalidIndex("posting payload size overflows u64".to_owned())
+                })?;
         let postings = read_delta_postings(
             &mut reader,
             posting_count_u32 as usize,
@@ -448,7 +455,9 @@ fn encoded_postings_len(postings: &[Posting]) -> Result<u64> {
         length = length
             .checked_add(varint_len(u64::from(document_delta)) as u64)
             .and_then(|value| value.checked_add(varint_len(u64::from(position_code)) as u64))
-            .ok_or_else(|| FoError::InvalidConfig("encoded posting length overflows u64".to_owned()))?;
+            .ok_or_else(|| {
+                FoError::InvalidConfig("encoded posting length overflows u64".to_owned())
+            })?;
         previous_document = posting.document_id;
         previous_position = posting.position;
     }
@@ -507,8 +516,8 @@ fn read_delta_postings(
                 .checked_add(position_code)
                 .ok_or_else(|| "position delta overflows u64".to_owned())?
         };
-        let position = u32::try_from(position_u64)
-            .map_err(|_| "decoded position exceeds u32".to_owned())?;
+        let position =
+            u32::try_from(position_u64).map_err(|_| "decoded position exceeds u32".to_owned())?;
         let posting = Posting {
             document_id,
             position,
@@ -632,9 +641,7 @@ fn file_stats(
 }
 
 fn fixed_posting_bytes(postings: usize) -> u64 {
-    (postings as u128)
-        .saturating_mul(8)
-        .min(u64::MAX as u128) as u64
+    (postings as u128).saturating_mul(8).min(u64::MAX as u128) as u64
 }
 
 fn read_magic(path: &Path) -> Result<[u8; 8]> {
@@ -663,10 +670,7 @@ fn write_normalization_header(
     writer.write_all(&[normalization.punctuation.as_u8(), 0, 0, 0])
 }
 
-fn read_normalization_header(
-    reader: &mut impl Read,
-    path: &Path,
-) -> Result<NormalizationProfile> {
+fn read_normalization_header(reader: &mut impl Read, path: &Path) -> Result<NormalizationProfile> {
     let flags = read_u32(reader).map_err(|error| FoError::io(path, error))?;
     if flags & !0b111 != 0 {
         return Err(FoError::InvalidIndex(format!(
@@ -893,7 +897,7 @@ mod tests {
             builder
                 .add_document(
                     format!("document-{document}.txt"),
-                    format!(
+                    &format!(
                         "common repeated passage number {document} with measurements and observations \
                          common repeated passage number {document} with measurements and observations"
                     ),

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use crate::{
-    Anchor, ChainOptions, Feature, Fingerprint, FoError, Index, Result, SearchIntent, SearchOptions,
-    SearchResult, chain_anchors, global_levenshtein, myers_infix_candidates, normalize,
-    qgram_hashes, semi_global_banded, winnow,
+    Anchor, ChainOptions, Feature, Fingerprint, FoError, Index, Result, SearchIntent,
+    SearchOptions, SearchResult, chain_anchors, global_levenshtein, myers_infix_candidates,
+    normalize, qgram_hashes, semi_global_banded, winnow,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -72,12 +72,13 @@ impl Index {
                     for shifted in [false, true] {
                         let encoded_bin =
                             encode_diagonal_bin(diagonal, options.diagonal_bin_width, shifted);
-                        let vote = votes
-                            .entry((posting.document_id, encoded_bin))
-                            .or_insert(Vote {
-                                weight: 0.0,
-                                hits: 0,
-                            });
+                        let vote =
+                            votes
+                                .entry((posting.document_id, encoded_bin))
+                                .or_insert(Vote {
+                                    weight: 0.0,
+                                    hits: 0,
+                                });
                         vote.weight += feature.idf;
                         vote.hits = vote.hits.saturating_add(1);
                     }
@@ -90,10 +91,7 @@ impl Index {
             .filter_map(|((document_id, encoded_bin), vote)| {
                 (vote.hits >= options.minimum_anchor_hits).then_some(Candidate {
                     document_id,
-                    expected_diagonal: diagonal_bin_center(
-                        encoded_bin,
-                        options.diagonal_bin_width,
-                    ),
+                    expected_diagonal: diagonal_bin_center(encoded_bin, options.diagonal_bin_width),
                     weight: vote.weight,
                     hits: vote.hits,
                 })
@@ -111,11 +109,8 @@ impl Index {
         candidates.truncate(options.max_candidates);
 
         let corpus_trials = self.stats().normalized_tokens.max(1) as f64;
-        let mut results = Vec::with_capacity(
-            candidates
-                .len()
-                .min(options.max_results.saturating_mul(4)),
-        );
+        let mut results =
+            Vec::with_capacity(candidates.len().min(options.max_results.saturating_mul(4)));
         for candidate in candidates {
             let Some(result) = self.score_candidate(
                 &query.tokens,
@@ -271,8 +266,8 @@ impl Index {
         if matched_tokens < required_tokens {
             return None;
         }
-        let anchor_coverage = (chain.covered_query_tokens as f32 / query_tokens.len() as f32)
-            .clamp(0.0, 1.0);
+        let anchor_coverage =
+            (chain.covered_query_tokens as f32 / query_tokens.len() as f32).clamp(0.0, 1.0);
         let query_coverage =
             (verified_query.len() as f32 / query_tokens.len() as f32).clamp(0.0, 1.0);
         let source_coverage =
@@ -288,8 +283,7 @@ impl Index {
             chain.median_diagonal,
             options.diagonal_bin_width,
         );
-        let estimated_false_matches =
-            corpus_trials * (-f64::from(candidate.weight.max(0.0))).exp();
+        let estimated_false_matches = corpus_trials * (-f64::from(candidate.weight.max(0.0))).exp();
         let combined_score = score_evidence(
             options.intent,
             alignment.similarity,
@@ -406,12 +400,7 @@ impl Index {
                     continue;
                 }
                 remaining_work -= work;
-                sampled_hamming_candidates(
-                    query,
-                    text,
-                    options.short_query_candidates,
-                    samples,
-                )
+                sampled_hamming_candidates(query, text, options.short_query_candidates, samples)
             };
 
             for (seed_distance, predicted_start) in local {
@@ -533,7 +522,9 @@ fn verify_short_candidate(
         query,
         &text[window_start..window_end],
         predicted_start.saturating_sub(window_start),
-        options.verification_band.max(seed_distance.saturating_add(8)),
+        options
+            .verification_band
+            .max(seed_distance.saturating_add(8)),
     );
     let corpus_start = window_start + alignment.text_start;
     let corpus_end = window_start + alignment.text_end;
@@ -675,9 +666,8 @@ fn score_evidence(
             } else {
                 0.0
             };
-            let base = 0.67 * edit_similarity
-                + 0.18 * chain_consistency
-                + 0.15 * evidence_confidence;
+            let base =
+                0.67 * edit_similarity + 0.18 * chain_consistency + 0.15 * evidence_confidence;
             (base * coverage.sqrt()).clamp(0.0, 1.0)
         }
     }
@@ -914,7 +904,11 @@ mod tests {
         text.extend_from_slice(&pattern);
         text.extend_from_slice(&[999; 100]);
         let candidates = sampled_hamming_candidates(&pattern, &text, 4, 16);
-        assert!(candidates.iter().any(|&(distance, start)| distance == 0 && start == 100));
+        assert!(
+            candidates
+                .iter()
+                .any(|&(distance, start)| distance == 0 && start == 100)
+        );
     }
 
     #[test]

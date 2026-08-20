@@ -6,7 +6,7 @@ mod claim_gates;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-use claim_gates::{ClaimGateReport, ClaimVerdict, evaluate_claims, write_default_manifest};
+use claim_gates::{ClaimGateReport, evaluate_claims, write_default_manifest};
 use clap::{Args, Parser, Subcommand};
 use fo_corpus::atomic_write;
 

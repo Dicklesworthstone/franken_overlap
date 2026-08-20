@@ -154,18 +154,16 @@ fn semi_global_myers(pattern: &[u32], text: &[u32], expected_start: usize) -> Al
     let maximum_span = pattern.len().saturating_add(best.distance);
     let local_start = best.end.saturating_sub(maximum_span);
     let local_text = &text[local_start..best.end];
-    let local_expected = expected_start.saturating_sub(local_start).min(local_text.len());
+    let local_expected = expected_start
+        .saturating_sub(local_start)
+        .min(local_text.len());
     let mut alignment = semi_global_full(pattern, local_text, local_expected);
     alignment.text_start = alignment.text_start.saturating_add(local_start);
     alignment.text_end = alignment.text_end.saturating_add(local_start);
     alignment
 }
 
-fn myers_infix_scores(
-    pattern: &[u32],
-    text: &[u32],
-    mut visit: impl FnMut(usize, usize),
-) {
+fn myers_infix_scores(pattern: &[u32], text: &[u32], mut visit: impl FnMut(usize, usize)) {
     debug_assert!(!pattern.is_empty() && pattern.len() <= 64);
     let mask = if pattern.len() == 64 {
         u64::MAX
@@ -256,12 +254,10 @@ fn semi_global_band_impl(
     }
 
     for row in 1..=pattern.len() {
-        let (first_column, last_column) =
-            band_bounds(row, expected_start, text.len(), radius);
+        let (first_column, last_column) = band_bounds(row, expected_start, text.len(), radius);
         let mut current = BandRow::new(first_column, last_column);
         for column in first_column..=last_column {
-            let boundary =
-                artificial_boundary(column, first_column, last_column, text.len());
+            let boundary = artificial_boundary(column, first_column, last_column, text.len());
             let cell = if column == 0 {
                 Cell {
                     cost: row.min(u32::MAX as usize) as u32,
@@ -269,7 +265,11 @@ fn semi_global_band_impl(
                     touched_boundary: boundary,
                 }
             } else {
-                let substitution = if pattern[row - 1] == text[column - 1] { 0 } else { 1 };
+                let substitution = if pattern[row - 1] == text[column - 1] {
+                    0
+                } else {
+                    1
+                };
                 let diagonal = add_cost(previous.get(column - 1), substitution, boundary);
                 let deletion = add_cost(previous.get(column), 1, boundary);
                 let insertion = add_cost(current.get(column - 1), 1, boundary);
@@ -289,8 +289,15 @@ fn semi_global_band_impl(
     let mut best = previous.get(best_end);
     for end in previous.start.saturating_add(1)..=previous.end() {
         let candidate = previous.get(end);
-        if alignment_order(candidate, end, best, best_end, expected_start, pattern.len())
-            .is_lt()
+        if alignment_order(
+            candidate,
+            end,
+            best,
+            best_end,
+            expected_start,
+            pattern.len(),
+        )
+        .is_lt()
         {
             best = candidate;
             best_end = end;
@@ -321,7 +328,11 @@ fn semi_global_full(pattern: &[u32], text: &[u32], expected_start: usize) -> Ali
             touched_boundary: false,
         };
         for column in 1..width {
-            let substitution = if pattern[row - 1] == text[column - 1] { 0 } else { 1 };
+            let substitution = if pattern[row - 1] == text[column - 1] {
+                0
+            } else {
+                1
+            };
             current[column] = best_cell(
                 [
                     add_cost(previous[column - 1], substitution, false),
@@ -339,8 +350,15 @@ fn semi_global_full(pattern: &[u32], text: &[u32], expected_start: usize) -> Ali
     let mut best_end = 0;
     let mut best = previous[0];
     for (end, &candidate) in previous.iter().enumerate().skip(1) {
-        if alignment_order(candidate, end, best, best_end, expected_start, pattern.len())
-            .is_lt()
+        if alignment_order(
+            candidate,
+            end,
+            best,
+            best_end,
+            expected_start,
+            pattern.len(),
+        )
+        .is_lt()
         {
             best = candidate;
             best_end = end;
@@ -367,8 +385,8 @@ pub fn global_levenshtein(left: &[u32], right: &[u32]) -> usize {
     for (row_index, &row_value) in rows.iter().enumerate() {
         current[0] = row_index + 1;
         for (column_index, &column_value) in columns.iter().enumerate() {
-            let substitution = previous[column_index]
-                + if row_value == column_value { 0 } else { 1 };
+            let substitution =
+                previous[column_index] + if row_value == column_value { 0 } else { 1 };
             let deletion = previous[column_index + 1] + 1;
             let insertion = current[column_index] + 1;
             current[column_index + 1] = substitution.min(deletion).min(insertion);
@@ -391,12 +409,7 @@ fn band_bounds(
     )
 }
 
-fn artificial_boundary(
-    column: usize,
-    first: usize,
-    last: usize,
-    text_length: usize,
-) -> bool {
+fn artificial_boundary(column: usize, first: usize, last: usize, text_length: usize) -> bool {
     (first > 0 && column == first) || (last < text_length && column == last)
 }
 
@@ -475,9 +488,7 @@ fn alignment_order(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        global_levenshtein, myers_infix_candidates, semi_global_banded, semi_global_full,
-    };
+    use super::{global_levenshtein, myers_infix_candidates, semi_global_banded, semi_global_full};
 
     fn tokens(value: &str) -> Vec<u32> {
         value.chars().map(u32::from).collect()
@@ -526,8 +537,7 @@ mod tests {
 
     #[test]
     fn myers_candidates_find_infix_with_insertions() {
-        let candidates =
-            myers_infix_candidates(&tokens("abcdef"), &tokens("xxxabcXdefyyy"), 4);
+        let candidates = myers_infix_candidates(&tokens("abcdef"), &tokens("xxxabcXdefyyy"), 4);
         assert_eq!(candidates[0].distance, 1);
         assert!(candidates[0].end >= 9 && candidates[0].end <= 10);
     }

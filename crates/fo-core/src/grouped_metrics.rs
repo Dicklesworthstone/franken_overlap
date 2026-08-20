@@ -43,7 +43,7 @@ impl GroupedEvaluationOptions {
                 "recall_ks must contain between 1 and 64 values".to_owned(),
             ));
         }
-        if self.recall_ks.iter().any(|&value| value == 0) {
+        if self.recall_ks.contains(&0) {
             return Err(FoError::InvalidConfig(
                 "recall_ks values must be positive".to_owned(),
             ));
@@ -291,7 +291,10 @@ fn validate_and_group(
                 example.score
             )));
         }
-        grouped.entry(example.query_id.as_str()).or_default().push(example);
+        grouped
+            .entry(example.query_id.as_str())
+            .or_default()
+            .push(example);
     }
     Ok(grouped)
 }
@@ -359,22 +362,16 @@ fn ranking_metrics(examples: &[&GroupedLabeledScore], ks: &[usize]) -> QueryRank
     }
 }
 
-fn expected_reciprocal_rank(
-    prior_positions: usize,
-    group_size: usize,
-    positives: usize,
-) -> f64 {
+fn expected_reciprocal_rank(prior_positions: usize, group_size: usize, positives: usize) -> f64 {
     let mut probability_no_positive = 1.0;
     let mut expectation = 0.0;
     let latest_first = group_size.saturating_sub(positives);
     for offset in 0..=latest_first {
         let remaining = group_size - offset;
-        let probability_first =
-            probability_no_positive * positives as f64 / remaining as f64;
+        let probability_first = probability_no_positive * positives as f64 / remaining as f64;
         expectation += probability_first / (prior_positions + offset + 1) as f64;
         if offset < latest_first {
-            probability_no_positive *=
-                (group_size - positives - offset) as f64 / remaining as f64;
+            probability_no_positive *= (group_size - positives - offset) as f64 / remaining as f64;
         }
     }
     expectation
@@ -416,9 +413,8 @@ fn bootstrap_intervals(
             flat.extend(scores);
         }
         if flat.iter().any(|example| example.label) && positive_groups > 0 {
-            micro_values.push(
-                precision_recall_report(&flat, options.evaluation)?.average_precision,
-            );
+            micro_values
+                .push(precision_recall_report(&flat, options.evaluation)?.average_precision);
             macro_values.push(macro_sum / positive_groups as f64);
         }
     }
@@ -428,10 +424,7 @@ fn bootstrap_intervals(
     ))
 }
 
-fn confidence_interval(
-    mut values: Vec<f64>,
-    confidence_level: f64,
-) -> Option<ConfidenceInterval> {
+fn confidence_interval(mut values: Vec<f64>, confidence_level: f64) -> Option<ConfidenceInterval> {
     if values.is_empty() {
         return None;
     }
@@ -523,10 +516,7 @@ mod tests {
 
     #[test]
     fn tie_aware_top_one_uses_expected_recall() {
-        let examples = vec![
-            example("q", 0.8, true),
-            example("q", 0.8, false),
-        ];
+        let examples = vec![example("q", 0.8, true), example("q", 0.8, false)];
         let report = grouped_evaluation_report(
             &examples,
             GroupedEvaluationOptions {

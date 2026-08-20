@@ -72,16 +72,14 @@ impl ReviewDecisionRecord {
                 }
                 if self.corrected_source_id.is_some() {
                     return Err(FoError::InvalidConfig(
-                        "corrected_source_id is valid only for correct_source decisions"
-                            .to_owned(),
+                        "corrected_source_id is valid only for correct_source decisions".to_owned(),
                     ));
                 }
             }
             ReviewDecisionKind::CorrectSource => {
                 if self.reviewer.trim().is_empty() || self.reviewed_at_unix == 0 {
                     return Err(FoError::InvalidConfig(
-                        "correct_source decisions require reviewer and reviewed_at_unix"
-                            .to_owned(),
+                        "correct_source decisions require reviewer and reviewed_at_unix".to_owned(),
                     ));
                 }
                 let corrected = self.corrected_source_id.as_deref().ok_or_else(|| {
@@ -138,9 +136,7 @@ const fn review_decision_schema_version() -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ReviewDecisionKind, ReviewDecisionRecord, validate_review_decisions,
-    };
+    use super::{ReviewDecisionKind, ReviewDecisionRecord, validate_review_decisions};
 
     fn decision(kind: ReviewDecisionKind) -> ReviewDecisionRecord {
         ReviewDecisionRecord {

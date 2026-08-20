@@ -31,7 +31,8 @@ fn adjudicates_ambiguous_natural_relation_into_valid_gold() {
     fs::write(documents.join("edition-b.txt"), &edition_b).expect("edition b");
     fs::write(documents.join("distractor.txt"), &distractor).expect("distractor");
 
-    let mut manifest = CorpusManifest::new("adjudication-fixture", CorpusProvider::ProjectGutenberg);
+    let mut manifest =
+        CorpusManifest::new("adjudication-fixture", CorpusProvider::ProjectGutenberg);
     manifest.upsert_document(document(
         "edition-a",
         "documents/edition-a.txt",
@@ -89,15 +90,7 @@ fn adjudicates_ambiguous_natural_relation_into_valid_gold() {
             0.84,
             Some((0, 180)),
         ),
-        score_row(
-            "distractor",
-            "Detective",
-            false,
-            0.12,
-            0.05,
-            0.08,
-            None,
-        ),
+        score_row("distractor", "Detective", false, 0.12, 0.05, 0.08, None),
     ];
     fs::write(
         &scores,
@@ -139,12 +132,16 @@ fn adjudicates_ambiguous_natural_relation_into_valid_gold() {
             .expect("task"),
     )
     .expect("task json");
-    assert!(task["reasons"]
-        .as_array()
-        .is_some_and(|reasons| reasons.iter().any(|reason| reason == "natural_relation")));
-    assert!(task["candidates"]
-        .as_array()
-        .is_some_and(|candidates| candidates.len() >= 2));
+    assert!(
+        task["reasons"]
+            .as_array()
+            .is_some_and(|reasons| reasons.iter().any(|reason| reason == "natural_relation"))
+    );
+    assert!(
+        task["candidates"]
+            .as_array()
+            .is_some_and(|candidates| candidates.len() >= 2)
+    );
 
     let decisions = root.join("decisions.jsonl");
     let decision = serde_json::json!({

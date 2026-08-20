@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod active_learning;
+mod ap_ranker;
 mod batch;
 mod calibration;
 mod chain;
@@ -41,6 +42,10 @@ pub use active_learning::{
     ActiveLearningCandidate, ActiveLearningOptions, ActiveLearningSelection,
     select_active_learning_queue,
 };
+pub use ap_ranker::{
+    AP_RANKING_FEATURE_COUNT, AP_RANKING_SCHEMA_VERSION, ApRankedResult, ApRankingComparison,
+    ApRankingModel, ApRankingOptions,
+};
 pub use batch::{BatchQuery, BatchSearchOptions, BatchSearchReport, BatchSearchResult};
 pub use calibration::{
     CALIBRATION_FEATURE_COUNT, CALIBRATION_SCHEMA_VERSION, CalibratedResult, CalibrationModel,
@@ -49,19 +54,17 @@ pub use calibration::{
 pub use chain::{Anchor, AnchorChain, ChainOptions, chain_anchors};
 pub use composite::{CompositeMatchBlock, CompositeSearchOptions, CompositeSearchResult};
 pub use contract_diff::{
-    benchmark_contract_portfolio, compare_contracts, ChangeDirection, ClauseChange,
-    ClauseChangeKind, ClausePrevalence, ContractChangeAlert, ContractComparison,
+    CONTRACT_COMPARISON_SCHEMA_VERSION, CONTRACT_PORTFOLIO_SCHEMA_VERSION, ChangeDirection,
+    ClauseChange, ClauseChangeKind, ClausePrevalence, ContractChangeAlert, ContractComparison,
     ContractComparisonOptions, ContractPortfolioBenchmark, ContractPortfolioOptions,
     DefinitionChange, DefinitionChangeKind, EconomicChangeKind, EconomicDistribution,
     EconomicTermChange, InvestorImpactCategory, ObligationChange, ObligationChangeKind,
-    PortfolioDocumentAnalysis, PortfolioOutlier, CONTRACT_COMPARISON_SCHEMA_VERSION,
-    CONTRACT_PORTFOLIO_SCHEMA_VERSION,
+    PortfolioDocumentAnalysis, PortfolioOutlier, benchmark_contract_portfolio, compare_contracts,
 };
 pub use contracts::{
-    analyze_contract, ClauseClassification, ClauseKind, ContractAnalysis,
-    ContractAnalysisOptions, ContractClause, ContractObligation, ContractProfile,
-    ContractWarning, DefinedTerm, EconomicTerm, EconomicTermKind, ObligationModality,
-    CONTRACT_ANALYSIS_SCHEMA_VERSION,
+    CONTRACT_ANALYSIS_SCHEMA_VERSION, ClauseClassification, ClauseKind, ContractAnalysis,
+    ContractAnalysisOptions, ContractClause, ContractObligation, ContractProfile, ContractWarning,
+    DefinedTerm, EconomicTerm, EconomicTermKind, ObligationModality, analyze_contract,
 };
 pub use domain::{
     DomainFeaturePolicy, DomainQueryAnalysis, DomainSearchOptions, DomainSearchReport,
@@ -74,19 +77,20 @@ pub use grouped_metrics::{
     GroupedLabeledScore, ThresholdConstraints, grouped_evaluation_report, select_operating_point,
 };
 pub use hybrid::{
-    HybridDocumentInput, HybridFilter, HybridIndex, HybridIndexBuilder, HybridIndexConfig,
-    HybridIndexStats, HybridOverlapEvidence, HybridQueryMode, HybridScoreExplanation,
-    HybridSearchOptions, HybridSearchReport, HybridSearchResult, HYBRID_INDEX_SCHEMA_VERSION,
+    HYBRID_INDEX_SCHEMA_VERSION, HybridDocumentInput, HybridFilter, HybridIndex,
+    HybridIndexBuilder, HybridIndexConfig, HybridIndexStats, HybridOverlapEvidence,
+    HybridQueryMode, HybridScoreExplanation, HybridSearchOptions, HybridSearchReport,
+    HybridSearchResult,
 };
 pub use hybrid_profile::{
-    HybridFusionProfile, HybridMetricSnapshot, HYBRID_FUSION_PROFILE_SCHEMA_VERSION,
+    HYBRID_FUSION_PROFILE_SCHEMA_VERSION, HybridFusionProfile, HybridMetricSnapshot,
 };
 pub use index::{Document, Index, IndexBuilder, IndexEntry};
 pub use lexical::{
-    LexicalByteSpan, LexicalClause, LexicalDocument, LexicalDocumentInput, LexicalField,
-    LexicalIndex, LexicalIndexBuilder, LexicalIndexConfig, LexicalIndexStats, LexicalOccur,
-    LexicalPosting, LexicalQuery, LexicalScoreExplanation, LexicalSearchOptions,
-    LexicalSearchResult, LexicalTermEntry, LEXICAL_INDEX_SCHEMA_VERSION,
+    LEXICAL_INDEX_SCHEMA_VERSION, LexicalByteSpan, LexicalClause, LexicalDocument,
+    LexicalDocumentInput, LexicalField, LexicalIndex, LexicalIndexBuilder, LexicalIndexConfig,
+    LexicalIndexStats, LexicalOccur, LexicalPosting, LexicalQuery, LexicalScoreExplanation,
+    LexicalSearchOptions, LexicalSearchResult, LexicalTermEntry,
 };
 pub use lineage::{
     CanonicalOrigin, LINEAGE_GRAPH_SCHEMA_VERSION, LineageEdge, LineageEvidence, LineageFamily,
@@ -114,13 +118,11 @@ pub use prepared::{
     DocumentCandidate, DocumentFirstOptions, DocumentFirstSearchReport, DocumentFirstStatus,
     PREPARED_QUERY_SCHEMA_VERSION, PreparedOverlapQuery, PreparedQueryFeature,
 };
-pub use provenance::{
-    OriginalByteRange, ProvenanceNormalizedText, normalize_with_provenance,
-};
+pub use provenance::{OriginalByteRange, ProvenanceNormalizedText, normalize_with_provenance};
 pub use ranking::{
-    GroupedFeedbackExample, PairwiseRankingOptions, RANKING_FEATURE_COUNT,
-    RANKING_SCHEMA_VERSION, RankedResult, RankingComparison, RankingModel, mine_hard_negatives,
-    ranking_evidence_vector, ranking_feature_names,
+    GroupedFeedbackExample, PairwiseRankingOptions, RANKING_FEATURE_COUNT, RANKING_SCHEMA_VERSION,
+    RankedResult, RankingComparison, RankingModel, mine_hard_negatives, ranking_evidence_vector,
+    ranking_feature_names,
 };
 pub use review::{
     REVIEW_DECISION_SCHEMA_VERSION, ReviewDecisionKind, ReviewDecisionRecord,
@@ -132,9 +134,9 @@ pub use segmented::{
     SegmentedIndexStats, SegmentedManifest, SegmentedSearchResult,
 };
 pub use semantic::{
-    SEMANTIC_FUSION_SCHEMA_VERSION, SemanticCandidateSet, SemanticEvidence,
-    SemanticFusionOptions, SemanticFusionReport, SemanticFusionResult,
-    SemanticRelationshipClass, SemanticScoreExplanation, fuse_semantic_candidates,
+    SEMANTIC_FUSION_SCHEMA_VERSION, SemanticCandidateSet, SemanticEvidence, SemanticFusionOptions,
+    SemanticFusionReport, SemanticFusionResult, SemanticRelationshipClass,
+    SemanticScoreExplanation, fuse_semantic_candidates,
 };
 pub use spectral::{SpectralOptions, SpectralPeak, spectral_scan};
 pub use storage_v2::{IndexFileStats, IndexSaveOptions, IndexStorageFormat};

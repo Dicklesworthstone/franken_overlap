@@ -95,19 +95,17 @@ fn renders_original_source_and_specimen_highlights() {
     assert!(html.contains("Source document"));
     assert!(html.contains("<mark>beta gamma</mark>"));
     assert!(html.contains("Download decisions.jsonl"));
-    let report: serde_json::Value = serde_json::from_slice(
-        &fs::read(output.join("review.json")).expect("review JSON"),
-    )
-    .expect("parse review");
+    let report: serde_json::Value =
+        serde_json::from_slice(&fs::read(output.join("review.json")).expect("review JSON"))
+            .expect("parse review");
     assert_eq!(report["target_id"], "specimen-fixture");
     assert_eq!(report["candidates"][0]["external_id"], "source");
     assert_eq!(report["candidates"][0]["blocks"][0]["source_byte_start"], 6);
     let decisions = fs::read_to_string(output.join("decisions.jsonl")).expect("decisions");
     assert!(decisions.contains("\"decision\":\"unreviewed\""));
-    let artifacts: serde_json::Value = serde_json::from_slice(
-        &fs::read(output.join("artifacts.json")).expect("artifacts"),
-    )
-    .expect("parse artifacts");
+    let artifacts: serde_json::Value =
+        serde_json::from_slice(&fs::read(output.join("artifacts.json")).expect("artifacts"))
+            .expect("parse artifacts");
     assert_eq!(artifacts["files"].as_array().map(Vec::len), Some(3));
 
     fs::remove_dir_all(root).ok();

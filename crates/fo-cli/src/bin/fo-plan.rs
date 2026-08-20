@@ -108,8 +108,8 @@ fn run() -> CliResult<()> {
             planner,
             CompositeSearchOptions {
                 maximum_blocks_per_document: command.maximum_blocks,
-                minimum_block_tokens: command.minimum_matched_tokens.min(20).max(1),
-                minimum_incremental_query_tokens: command.minimum_matched_tokens.min(12).max(1),
+                minimum_block_tokens: command.minimum_matched_tokens.clamp(1, 20),
+                minimum_incremental_query_tokens: command.minimum_matched_tokens.clamp(1, 12),
                 minimum_aggregate_score: command.minimum_similarity,
                 ..CompositeSearchOptions::default()
             },
@@ -167,8 +167,14 @@ fn print_plan(plan: &fo_core::QueryPlan) {
     println!("Missing features:          {}", plan.missing_features);
     println!("Suppressed features:       {}", plan.suppressed_features);
     println!("Retained fraction:         {:.4}", plan.retained_fraction);
-    println!("Estimated posting pairs:   {}", plan.estimated_posting_pairs);
-    println!("Estimated diagonal votes:  {}", plan.estimated_diagonal_votes);
+    println!(
+        "Estimated posting pairs:   {}",
+        plan.estimated_posting_pairs
+    );
+    println!(
+        "Estimated diagonal votes:  {}",
+        plan.estimated_diagonal_votes
+    );
     println!(
         "Suggested posting cap:     {}",
         plan.suggested_max_postings_per_feature

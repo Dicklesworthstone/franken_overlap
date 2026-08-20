@@ -149,9 +149,7 @@ fn run_corpus(command: RunCommand) -> CliResult<()> {
         })?;
         let pair_cases = parse_pan_xml(&fs::read_to_string(truth_path)?, &command.truth_tag)?
             .into_iter()
-            .filter(|case| {
-                !case.is_external || case.source_reference == pair.source_reference
-            })
+            .filter(|case| !case.is_external || case.source_reference == pair.source_reference)
             .collect::<Vec<_>>();
         cases.extend(pair_cases);
 
@@ -174,7 +172,7 @@ fn run_corpus(command: RunCommand) -> CliResult<()> {
             CompositeSearchOptions {
                 maximum_blocks_per_document: command.maximum_blocks,
                 minimum_block_tokens: command.minimum_block_tokens,
-                minimum_incremental_query_tokens: command.minimum_block_tokens.min(12).max(1),
+                minimum_incremental_query_tokens: command.minimum_block_tokens.clamp(1, 12),
                 minimum_aggregate_score: command.minimum_score,
                 ..CompositeSearchOptions::default()
             },
@@ -337,7 +335,11 @@ fn collect_xml_files(directory: &Path, output: &mut Vec<PathBuf>) -> io::Result<
         return Ok(());
     }
     if metadata.is_file() {
-        if directory.extension().and_then(|extension| extension.to_str()) == Some("xml") {
+        if directory
+            .extension()
+            .and_then(|extension| extension.to_str())
+            == Some("xml")
+        {
             output.push(directory.to_owned());
         }
         return Ok(());
@@ -356,10 +358,7 @@ fn collect_xml_files(directory: &Path, output: &mut Vec<PathBuf>) -> io::Result<
     Ok(())
 }
 
-fn locate_truth_file<'a>(
-    files: &'a BTreeMap<String, PathBuf>,
-    pair: &Pair,
-) -> Option<&'a PathBuf> {
+fn locate_truth_file<'a>(files: &'a BTreeMap<String, PathBuf>, pair: &Pair) -> Option<&'a PathBuf> {
     let suspicious_stem = file_stem(&pair.suspicious_reference)?;
     let source_stem = file_stem(&pair.source_reference)?;
     let paired = format!("{suspicious_stem}-{source_stem}.xml");
@@ -450,8 +449,7 @@ fn parse_attributes(tag: &str) -> CliResult<BTreeMap<String, String>> {
     }
     let mut attributes = BTreeMap::new();
     while cursor < bytes.len() {
-        while cursor < bytes.len()
-            && (bytes[cursor].is_ascii_whitespace() || bytes[cursor] == b'/')
+        while cursor < bytes.len() && (bytes[cursor].is_ascii_whitespace() || bytes[cursor] == b'/')
         {
             cursor += 1;
         }
@@ -483,9 +481,7 @@ fn parse_attributes(tag: &str) -> CliResult<BTreeMap<String, String>> {
             .get(cursor)
             .ok_or_else(|| invalid_input(format!("XML attribute {name} has no value")))?;
         if quote != b'\'' && quote != b'"' {
-            return Err(invalid_input(format!(
-                "XML attribute {name} is not quoted"
-            )));
+            return Err(invalid_input(format!("XML attribute {name} is not quoted")));
         }
         cursor += 1;
         let value_start = cursor;
@@ -540,10 +536,7 @@ fn xml_unescape(value: &str) -> CliResult<String> {
     Ok(output)
 }
 
-fn parse_required_usize(
-    attributes: &BTreeMap<String, String>,
-    name: &str,
-) -> CliResult<usize> {
+fn parse_required_usize(attributes: &BTreeMap<String, String>, name: &str) -> CliResult<usize> {
     attributes
         .get(name)
         .ok_or_else(|| invalid_input(format!("PAN feature has no {name} attribute")))?

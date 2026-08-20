@@ -52,11 +52,7 @@ impl ProvenanceNormalizedText {
     }
 
     #[must_use]
-    pub fn original_range_for_tokens(
-        &self,
-        start: usize,
-        end: usize,
-    ) -> Option<OriginalByteRange> {
+    pub fn original_range_for_tokens(&self, start: usize, end: usize) -> Option<OriginalByteRange> {
         let start = start.min(self.len());
         let end = end.min(self.len()).max(start);
         if start == end {
@@ -214,7 +210,10 @@ mod tests {
         ] {
             let mapped = normalize_with_provenance(input, &profile);
             assert_eq!(mapped.normalized.text, normalize(input, &profile).text);
-            assert_eq!(mapped.normalized.len(), mapped.token_original_ranges().len());
+            assert_eq!(
+                mapped.normalized.len(),
+                mapped.token_original_ranges().len()
+            );
         }
     }
 

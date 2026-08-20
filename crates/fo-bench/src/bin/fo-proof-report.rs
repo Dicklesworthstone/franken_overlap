@@ -52,7 +52,11 @@ fn main() {
 
 fn run() -> CliResult<()> {
     let command = Cli::parse();
-    validate_proof_receipts(&command.corpus_root, &command.queries, &command.proof_report)?;
+    validate_proof_receipts(
+        &command.corpus_root,
+        &command.queries,
+        &command.proof_report,
+    )?;
     let report = render_evidence_bundle(
         &command.corpus_root,
         &command.queries,

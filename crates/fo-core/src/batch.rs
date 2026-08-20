@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{FoError, Index, Result, SearchOptions, SearchResult};
@@ -98,7 +98,8 @@ impl Index {
             unique_indices
                 .par_iter()
                 .map(|&query_index| {
-                    let outcome = match self.search(&queries[query_index].specimen, search_options) {
+                    let outcome = match self.search(&queries[query_index].specimen, search_options)
+                    {
                         Ok(results) => QueryOutcome {
                             results,
                             error: None,
@@ -149,10 +150,12 @@ impl Index {
         let mut failed = 0usize;
         let mut total_hits = 0usize;
         for (query_index, query) in queries.iter().enumerate() {
-            let outcome = outcomes[query_index].take().unwrap_or_else(|| QueryOutcome {
-                results: Vec::new(),
-                error: Some("batch scheduler produced no outcome".to_owned()),
-            });
+            let outcome = outcomes[query_index]
+                .take()
+                .unwrap_or_else(|| QueryOutcome {
+                    results: Vec::new(),
+                    error: Some("batch scheduler produced no outcome".to_owned()),
+                });
             if outcome.error.is_some() {
                 failed += 1;
             } else {
@@ -184,7 +187,8 @@ fn validate_queries(queries: &[BatchQuery], options: BatchSearchOptions) -> Resu
     if queries.len() > options.maximum_queries {
         return Err(FoError::InvalidConfig(format!(
             "batch contains {} queries; limit is {}",
-            queries.len(), options.maximum_queries
+            queries.len(),
+            options.maximum_queries
         )));
     }
     let mut ids = HashSet::with_capacity(queries.len());
@@ -201,9 +205,11 @@ fn validate_queries(queries: &[BatchQuery], options: BatchSearchOptions) -> Resu
                 query.id
             )));
         }
-        total_bytes = total_bytes.checked_add(query.specimen.len()).ok_or_else(|| {
-            FoError::InvalidConfig("batch specimen byte total overflowed usize".to_owned())
-        })?;
+        total_bytes = total_bytes
+            .checked_add(query.specimen.len())
+            .ok_or_else(|| {
+                FoError::InvalidConfig("batch specimen byte total overflowed usize".to_owned())
+            })?;
         if total_bytes > options.maximum_total_specimen_bytes {
             return Err(FoError::InvalidConfig(format!(
                 "batch specimens contain {total_bytes} bytes; limit is {}",
@@ -223,10 +229,12 @@ fn canonical_queries(queries: &[BatchQuery], deduplicate: bool) -> (Vec<usize>, 
     let mut canonical_for = Vec::with_capacity(queries.len());
     let mut unique_indices = Vec::new();
     for (query_index, query) in queries.iter().enumerate() {
-        let canonical = *first_seen.entry(query.specimen.as_str()).or_insert_with(|| {
-            unique_indices.push(query_index);
-            query_index
-        });
+        let canonical = *first_seen
+            .entry(query.specimen.as_str())
+            .or_insert_with(|| {
+                unique_indices.push(query_index);
+                query_index
+            });
         canonical_for.push(canonical);
     }
     (canonical_for, unique_indices)
@@ -289,7 +297,10 @@ mod tests {
         assert_eq!(report.results[2].query_id, "duplicate");
         assert_eq!(report.unique_specimens, 2);
         assert_eq!(report.results[2].deduplicated_from, Some(0));
-        assert_eq!(report.results[0].results.len(), report.results[2].results.len());
+        assert_eq!(
+            report.results[0].results.len(),
+            report.results[2].results.len()
+        );
         for (left, right) in report.results[0]
             .results
             .iter()

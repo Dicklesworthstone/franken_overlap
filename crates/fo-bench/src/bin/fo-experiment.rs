@@ -190,7 +190,9 @@ impl ExperimentRecord {
             ("report_fingerprint", self.report_fingerprint.as_str()),
         ] {
             if value.trim().is_empty() {
-                return Err(invalid_input(format!("experiment {name} must not be empty")));
+                return Err(invalid_input(format!(
+                    "experiment {name} must not be empty"
+                )));
             }
         }
         validate_metrics(&self.metrics)?;
@@ -478,9 +480,10 @@ fn run_promote(command: PromoteCommand) -> CliResult<()> {
         constraints,
     )
     .ok_or_else(|| invalid_input("no profile-bearing experiment satisfies the base constraints"))?;
-    let profile = candidate.profile.clone().ok_or_else(|| {
-        invalid_input("selected experiment has no fusion profile")
-    })?;
+    let profile = candidate
+        .profile
+        .clone()
+        .ok_or_else(|| invalid_input("selected experiment has no fusion profile"))?;
     let mut registry = PromotionRegistry::load(&command.registry)?;
     if let Some(current) = registry.promotions.get(&command.corpus_id) {
         enforce_promotion_delta(
@@ -595,7 +598,10 @@ fn validate_metrics(metrics: &ExperimentMetrics) -> CliResult<()> {
         }
     }
     for (name, value) in [
-        ("false_positives_per_query", metrics.false_positives_per_query),
+        (
+            "false_positives_per_query",
+            metrics.false_positives_per_query,
+        ),
         ("p50_ms", metrics.p50_ms),
         ("p95_ms", metrics.p95_ms),
         ("p99_ms", metrics.p99_ms),
@@ -729,13 +735,19 @@ fn append_record(path: &Path, record: &ExperimentRecord) -> CliResult<()> {
     } else {
         Vec::new()
     };
-    if records.iter().any(|existing| existing.run_id == record.run_id) {
+    if records
+        .iter()
+        .any(|existing| existing.run_id == record.run_id)
+    {
         return Err(invalid_input(format!(
             "ledger already contains run ID {}",
             record.run_id
         )));
     }
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let file = OpenOptions::new().create(true).append(true).open(path)?;
@@ -850,7 +862,10 @@ fn print_metrics(metrics: &ExperimentMetrics) {
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> CliResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let temporary = temporary_path(path);
@@ -924,8 +939,8 @@ fn invalid_input(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
 #[cfg(test)]
 mod tests {
     use super::{
-        enforce_promotion_delta, select_best, ExperimentMetrics, ExperimentRecord, PromotionEntry,
-        SelectionConstraints,
+        ExperimentMetrics, ExperimentRecord, PromotionEntry, SelectionConstraints,
+        enforce_promotion_delta, select_best,
     };
     use fo_core::HybridFusionProfile;
 
@@ -966,9 +981,7 @@ mod tests {
             profile: HybridFusionProfile::default(),
         };
         let candidate = record("candidate", 0.82, 0.82, 0.82, 15.0, true);
-        assert!(
-            enforce_promotion_delta(&current, &candidate, 0.0, 0.0, 0.0, 0.10).is_err()
-        );
+        assert!(enforce_promotion_delta(&current, &candidate, 0.0, 0.0, 0.0, 0.10).is_err());
     }
 
     fn record(

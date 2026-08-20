@@ -83,7 +83,9 @@ pub struct EvidenceOptions {
 impl EvidenceOptions {
     pub fn validate(&self) -> EvidenceResult<()> {
         if self.selected_method.trim().is_empty() || self.top_candidates == 0 {
-            return Err(invalid("selected method and top-candidates must be nonempty"));
+            return Err(invalid(
+                "selected method and top-candidates must be nonempty",
+            ));
         }
         if self.bootstrap_samples > 100_000 {
             return Err(invalid("bootstrap-samples must not exceed 100000"));
@@ -230,12 +232,17 @@ pub fn read_score_rows(path: &Path) -> EvidenceResult<Vec<ScoreRow>> {
         if value.is_empty() || value.starts_with('#') {
             continue;
         }
-        rows.push(serde_json::from_str::<ScoreRow>(value).map_err(|error| {
-            invalid(format!("{}:{}: {error}", path.display(), line_index + 1))
-        })?);
+        rows.push(
+            serde_json::from_str::<ScoreRow>(value).map_err(|error| {
+                invalid(format!("{}:{}: {error}", path.display(), line_index + 1))
+            })?,
+        );
     }
     if rows.is_empty() {
-        return Err(invalid(format!("{} contains no score rows", path.display())));
+        return Err(invalid(format!(
+            "{} contains no score rows",
+            path.display()
+        )));
     }
     Ok(rows)
 }
@@ -340,7 +347,11 @@ pub fn build_evidence(
             left.baseline
                 .macro_auprc
                 .total_cmp(&right.baseline.macro_auprc)
-                .then_with(|| left.baseline.micro_auprc.total_cmp(&right.baseline.micro_auprc))
+                .then_with(|| {
+                    left.baseline
+                        .micro_auprc
+                        .total_cmp(&right.baseline.micro_auprc)
+                })
         })
         .ok_or_else(|| invalid("no baseline comparison was produced"))?;
     let best_baseline = best.baseline_method.clone();
@@ -395,8 +406,14 @@ pub fn render_markdown(report: &EvidenceReport) -> String {
     let mut out = String::new();
     out.push_str("# FrankenOverlap empirical evidence\n\n");
     out.push_str(&format!("Corpus: `{}`  \n", report.corpus_id));
-    out.push_str(&format!("Selected method: `{}`  \n", report.selected_method));
-    out.push_str(&format!("Queries / pairs: {} / {}  \n", report.queries, report.pairs));
+    out.push_str(&format!(
+        "Selected method: `{}`  \n",
+        report.selected_method
+    ));
+    out.push_str(&format!(
+        "Queries / pairs: {} / {}  \n",
+        report.queries, report.pairs
+    ));
     out.push_str(&format!("Verdict: **{}**\n\n", report.verdict.claim));
     out.push_str("## Method comparisons\n\n");
     out.push_str("| Baseline | Δ micro AUPRC | Δ macro AUPRC | Δ Recall@1 | p95 speed ratio | Quality gate |\n");
@@ -409,7 +426,11 @@ pub fn render_markdown(report: &EvidenceReport) -> String {
             comparison.macro_auprc_delta.point,
             comparison.recall_at_1_delta.point,
             comparison.timing.p95_speed_ratio,
-            if comparison.quality_gate_passed { "yes" } else { "no" },
+            if comparison.quality_gate_passed {
+                "yes"
+            } else {
+                "no"
+            },
         ));
     }
     out.push_str("\nA p95 ratio above 1 means the selected method was faster. Quality and wall time are deliberately separate claims.\n\n");
@@ -495,7 +516,9 @@ fn validate_inputs<'a>(
             || row.source_id.trim().is_empty()
             || row.candidate_id.trim().is_empty()
         {
-            return Err(invalid(format!("score row {index} has an empty identifier")));
+            return Err(invalid(format!(
+                "score row {index} has an empty identifier"
+            )));
         }
         if !seen.insert((&row.query_id, &row.candidate_id)) {
             return Err(invalid(format!(
@@ -503,15 +526,25 @@ fn validate_inputs<'a>(
                 row.query_id, row.candidate_id
             )));
         }
-        if row.scores.keys().map(String::as_str).collect::<BTreeSet<_>>() != methods {
-            return Err(invalid(format!("score row {index} method set disagrees with report")));
+        if row
+            .scores
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+            != methods
+        {
+            return Err(invalid(format!(
+                "score row {index} method set disagrees with report"
+            )));
         }
         if row
             .scores
             .values()
             .any(|score| !score.is_finite() || !(0.0..=1.0).contains(score))
         {
-            return Err(invalid(format!("score row {index} contains an invalid score")));
+            return Err(invalid(format!(
+                "score row {index} contains an invalid score"
+            )));
         }
         grouped.entry(&row.query_id).or_default().push(row);
     }
@@ -529,7 +562,9 @@ fn validate_inputs<'a>(
             .any(|row| row.profile != first.profile || row.source_id != first.source_id)
             || !group.iter().any(|row| row.label)
         {
-            return Err(invalid(format!("query group {query} is inconsistent or has no positive")));
+            return Err(invalid(format!(
+                "query group {query} is inconsistent or has no positive"
+            )));
         }
     }
     Ok(grouped)
@@ -559,9 +594,21 @@ fn verify_report_consistency(
 ) -> EvidenceResult<()> {
     let expected = method_report(benchmark, method)?;
     for (name, left, right) in [
-        ("micro AUPRC", observed.micro.average_precision, expected.quality.micro.average_precision),
-        ("macro AUPRC", observed.macro_average_precision, expected.quality.macro_average_precision),
-        ("MRR", observed.mean_reciprocal_rank, expected.quality.mean_reciprocal_rank),
+        (
+            "micro AUPRC",
+            observed.micro.average_precision,
+            expected.quality.micro.average_precision,
+        ),
+        (
+            "macro AUPRC",
+            observed.macro_average_precision,
+            expected.quality.macro_average_precision,
+        ),
+        (
+            "MRR",
+            observed.mean_reciprocal_rank,
+            expected.quality.mean_reciprocal_rank,
+        ),
     ] {
         if (left - right).abs() > 1.0e-9 {
             return Err(invalid(format!(
@@ -661,8 +708,12 @@ fn bootstrap(
         }
         let selected_report = grouped_evaluation_report(&selected_rows, evaluation_options())?;
         let baseline_report = grouped_evaluation_report(&baseline_rows, evaluation_options())?;
-        micro.push(selected_report.micro.average_precision - baseline_report.micro.average_precision);
-        macro_values.push(selected_report.macro_average_precision - baseline_report.macro_average_precision);
+        micro.push(
+            selected_report.micro.average_precision - baseline_report.micro.average_precision,
+        );
+        macro_values.push(
+            selected_report.macro_average_precision - baseline_report.macro_average_precision,
+        );
         mrr.push(selected_report.mean_reciprocal_rank - baseline_report.mean_reciprocal_rank);
         recall.push(metric_at(&selected_report, 1) - metric_at(&baseline_report, 1));
     }
@@ -714,18 +765,21 @@ fn choose_examples(
             .map(|summary| summary.positive_expected_rank)
             .fold(f64::INFINITY, f64::min);
         let first = group[0];
-        profiles.entry(first.profile.clone()).or_default().push(IllustrativeExample {
-            profile: first.profile.clone(),
-            kind: String::new(),
-            query_id: first.query_id.clone(),
-            query_text: first.query_text.clone(),
-            source_id: first.source_id.clone(),
-            source_title: first.source_title.clone(),
-            expected_rank_improvement_over_best_baseline: best_baseline_rank
-                - selected.positive_expected_rank,
-            selected,
-            baselines: baseline_summaries,
-        });
+        profiles
+            .entry(first.profile.clone())
+            .or_default()
+            .push(IllustrativeExample {
+                profile: first.profile.clone(),
+                kind: String::new(),
+                query_id: first.query_id.clone(),
+                query_text: first.query_text.clone(),
+                source_id: first.source_id.clone(),
+                source_title: first.source_title.clone(),
+                expected_rank_improvement_over_best_baseline: best_baseline_rank
+                    - selected.positive_expected_rank,
+                selected,
+                baselines: baseline_summaries,
+            });
     }
     let mut output = Vec::new();
     for examples in profiles.values_mut() {
@@ -747,7 +801,9 @@ fn choose_examples(
                 .then_with(|| left.query_id.cmp(&right.query_id))
         });
         if let Some(mut value) = examples.first().cloned()
-            && !output.iter().any(|existing| existing.query_id == value.query_id)
+            && !output
+                .iter()
+                .any(|existing| existing.query_id == value.query_id)
         {
             value.kind = "hardest_selected_method_case".to_owned();
             output.push(value);
@@ -761,11 +817,7 @@ fn choose_examples(
     output
 }
 
-fn rank_summary(
-    group: &[&ScoreRow],
-    method: &str,
-    top_candidates: usize,
-) -> MethodRankSummary {
+fn rank_summary(group: &[&ScoreRow], method: &str, top_candidates: usize) -> MethodRankSummary {
     let positive_score = group
         .iter()
         .filter(|row| row.label)
@@ -782,10 +834,8 @@ fn rank_summary(
         .max(1);
     let best = better + 1;
     let worst = better + tied;
-    let expected_reciprocal_rank = (best..=worst)
-        .map(|rank| 1.0 / rank as f64)
-        .sum::<f64>()
-        / (worst - best + 1) as f64;
+    let expected_reciprocal_rank =
+        (best..=worst).map(|rank| 1.0 / rank as f64).sum::<f64>() / (worst - best + 1) as f64;
     let mut ranked = group.to_vec();
     ranked.sort_unstable_by(|left, right| {
         right.scores[method]
@@ -816,7 +866,10 @@ fn render_ranks(out: &mut String, summary: &MethodRankSummary) {
     out.push_str("| Rank | Candidate | Score | Relevant |\n");
     out.push_str("|---:|---|---:|:---:|\n");
     for (rank, candidate) in summary.top_candidates.iter().enumerate() {
-        let name = candidate.title.as_deref().unwrap_or(&candidate.candidate_id);
+        let name = candidate
+            .title
+            .as_deref()
+            .unwrap_or(&candidate.candidate_id);
         out.push_str(&format!(
             "| {} | {} | {:.6} | {} |\n",
             rank + 1,

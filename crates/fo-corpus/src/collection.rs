@@ -6,8 +6,8 @@ use std::path::{Component, Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    atomic_write, sha256_hex, unix_timestamp, verify_manifest, CorpusDocument, CorpusError,
-    CorpusManifest, CorpusProvider, ManifestVerificationReport, Result,
+    CorpusDocument, CorpusError, CorpusManifest, CorpusProvider, ManifestVerificationReport,
+    Result, atomic_write, sha256_hex, unix_timestamp, verify_manifest,
 };
 
 pub const COLLECTION_MANIFEST_SCHEMA_VERSION: u32 = 1;
@@ -484,9 +484,7 @@ pub fn import_collection(options: CollectionImportOptions) -> Result<CollectionI
             .as_ref()
             .map(|value| value.tags.clone())
             .unwrap_or_default();
-        let executed_date = row
-            .as_ref()
-            .and_then(|value| value.executed_date.clone());
+        let executed_date = row.as_ref().and_then(|value| value.executed_date.clone());
         let mut row_metadata = row
             .as_ref()
             .map(|value| value.metadata.clone())
@@ -551,7 +549,9 @@ pub fn import_collection(options: CollectionImportOptions) -> Result<CollectionI
         }
     }
 
-    collection.documents.sort_unstable_by(|left, right| left.id.cmp(&right.id));
+    collection
+        .documents
+        .sort_unstable_by(|left, right| left.id.cmp(&right.id));
     collection.relations = explicit_relations;
     if options.infer_previous_versions {
         infer_previous_relations(&mut collection);
@@ -580,7 +580,11 @@ pub fn import_collection(options: CollectionImportOptions) -> Result<CollectionI
         documents: collection.documents.len(),
         families,
         relations: collection.relations.len(),
-        total_bytes: collection.documents.iter().map(|document| document.bytes).sum(),
+        total_bytes: collection
+            .documents
+            .iter()
+            .map(|document| document.bytes)
+            .sum(),
         skipped_binary,
         skipped_oversized,
         unused_metadata_rows: metadata.into_keys().collect(),
@@ -673,7 +677,8 @@ fn collect_files(root: &Path, all_files: bool, output: &mut Vec<PathBuf>) -> Res
     for entry in fs::read_dir(root).map_err(|error| CorpusError::io(root, error))? {
         let entry = entry.map_err(|error| CorpusError::io(root, error))?;
         let path = entry.path();
-        let metadata = fs::symlink_metadata(&path).map_err(|error| CorpusError::io(&path, error))?;
+        let metadata =
+            fs::symlink_metadata(&path).map_err(|error| CorpusError::io(&path, error))?;
         if metadata.file_type().is_symlink() {
             continue;
         }
@@ -737,9 +742,15 @@ fn push_explicit_relations(
     output: &mut Vec<CollectionRelation>,
 ) {
     for (target, kind) in [
-        (row.previous_version_id.as_ref(), CollectionRelationKind::PreviousVersion),
+        (
+            row.previous_version_id.as_ref(),
+            CollectionRelationKind::PreviousVersion,
+        ),
         (row.amends_id.as_ref(), CollectionRelationKind::AmendmentOf),
-        (row.supersedes_id.as_ref(), CollectionRelationKind::Supersedes),
+        (
+            row.supersedes_id.as_ref(),
+            CollectionRelationKind::Supersedes,
+        ),
     ] {
         if let Some(target) = target {
             output.push(CollectionRelation {
@@ -837,16 +848,23 @@ fn valid_date(value: &str) -> bool {
             .iter()
             .enumerate()
             .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit())
-        && value[5..7].parse::<u8>().is_ok_and(|month| (1..=12).contains(&month))
-        && value[8..10].parse::<u8>().is_ok_and(|day| (1..=31).contains(&day))
+        && value[5..7]
+            .parse::<u8>()
+            .is_ok_and(|month| (1..=12).contains(&month))
+        && value[8..10]
+            .parse::<u8>()
+            .is_ok_and(|day| (1..=31).contains(&day))
 }
 
 fn validate_relative_path(value: &str) -> Result<()> {
     let path = Path::new(value);
     if path.is_absolute()
-        || path
-            .components()
-            .any(|component| matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_)))
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
     {
         return Err(CorpusError::Invalid(format!(
             "unsafe collection relative path {value:?}"
@@ -918,8 +936,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        import_collection, verify_collection, CollectionImportOptions, CollectionMetadataRow,
-        CollectionProfile, CollectionRelationKind,
+        CollectionImportOptions, CollectionMetadataRow, CollectionProfile, CollectionRelationKind,
+        import_collection, verify_collection,
     };
 
     #[test]
@@ -928,10 +946,16 @@ mod tests {
         let source = root.join("source");
         let output = root.join("output");
         fs::create_dir_all(&source).expect("source");
-        fs::write(source.join("lease-v1.txt"), "original rent and renewal language")
-            .expect("v1");
-        fs::write(source.join("lease-v2.txt"), "amended rent and renewal language")
-            .expect("v2");
+        fs::write(
+            source.join("lease-v1.txt"),
+            "original rent and renewal language",
+        )
+        .expect("v1");
+        fs::write(
+            source.join("lease-v2.txt"),
+            "amended rent and renewal language",
+        )
+        .expect("v2");
         let metadata = root.join("metadata.jsonl");
         let rows = [
             CollectionMetadataRow {
@@ -992,7 +1016,10 @@ mod tests {
         let verified = verify_collection(&output).expect("verify");
         assert_eq!(verified.documents, 2);
         let manifest = super::CollectionManifest::load(output).expect("load");
-        assert_eq!(manifest.relations[0].kind, CollectionRelationKind::PreviousVersion);
+        assert_eq!(
+            manifest.relations[0].kind,
+            CollectionRelationKind::PreviousVersion
+        );
         assert_eq!(manifest.relations[0].from_id, "lease-2025");
         assert_eq!(manifest.relations[0].to_id, "lease-2024");
         fs::remove_dir_all(root).ok();

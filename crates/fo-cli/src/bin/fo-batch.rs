@@ -148,7 +148,10 @@ fn read_queries(path: &Path) -> CliResult<Vec<BatchQuery>> {
 }
 
 fn write_jsonl(path: &Path, values: &[BatchSearchResult]) -> CliResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let temporary = temporary_path(path);
@@ -169,7 +172,10 @@ fn write_jsonl_to(writer: &mut impl Write, values: &[BatchSearchResult]) -> CliR
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> CliResult<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)?;
     }
     let temporary = temporary_path(path);

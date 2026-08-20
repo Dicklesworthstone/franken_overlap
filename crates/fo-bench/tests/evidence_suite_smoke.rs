@@ -83,8 +83,7 @@ fn runs_benchmark_scores_and_bundle_as_one_immutable_suite() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let report: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("suite report");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("suite report");
     assert_eq!(report["status"], "complete");
     assert_eq!(report["claim_status"], "not_evaluated");
     assert_eq!(report["evaluated_corpus_sizes"][0], 2);

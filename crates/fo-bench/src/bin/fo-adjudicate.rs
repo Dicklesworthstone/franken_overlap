@@ -6,9 +6,7 @@ mod adjudication;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-use adjudication::{
-    QueueOptions, apply_decisions, create_review_queue, validate_gold,
-};
+use adjudication::{QueueOptions, apply_decisions, create_review_queue, validate_gold};
 use clap::{Args, Parser, Subcommand};
 use fo_corpus::atomic_write;
 
@@ -121,7 +119,10 @@ fn run_queue(command: QueueCommand) -> CliResult<()> {
         println!("Corpus size:            {}", report.corpus_size);
         println!("Input queries:          {}", report.input_queries);
         println!("Queued queries:         {}", report.queued_queries);
-        println!("Natural relations:      {}", report.natural_relation_queries);
+        println!(
+            "Natural relations:      {}",
+            report.natural_relation_queries
+        );
         println!("Top-one disagreements:  {}", report.disagreement_queries);
         println!("Queue:                  {}", command.output.display());
         println!("Queue SHA-256:          {}", report.output_sha256);
@@ -173,10 +174,7 @@ fn run_validate(command: ValidateCommand) -> CliResult<()> {
     Ok(())
 }
 
-fn write_optional_report<T: serde::Serialize>(
-    path: Option<&Path>,
-    report: &T,
-) -> CliResult<()> {
+fn write_optional_report<T: serde::Serialize>(path: Option<&Path>, report: &T) -> CliResult<()> {
     if let Some(path) = path {
         atomic_write(path, &serde_json::to_vec_pretty(report)?)?;
     }
