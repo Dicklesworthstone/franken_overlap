@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -140,7 +140,9 @@ impl Index {
             return Err(FoError::EmptySpecimen);
         }
 
-        let mut token_counts = HashMap::<u32, usize>::new();
+        // BTreeMap: entropy is a float sum, so iteration order must be
+        // deterministic or identical queries produce ULP-different plans.
+        let mut token_counts = BTreeMap::<u32, usize>::new();
         for &token in &query.tokens {
             *token_counts.entry(token).or_default() += 1;
         }
@@ -314,7 +316,7 @@ impl Index {
     }
 }
 
-fn shannon_entropy(counts: &HashMap<u32, usize>, total: usize) -> f64 {
+fn shannon_entropy(counts: &BTreeMap<u32, usize>, total: usize) -> f64 {
     if total == 0 {
         return 0.0;
     }
