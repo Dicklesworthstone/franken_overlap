@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::Parser;
-use fo_corpus::{atomic_write, sha256_hex, unix_timestamp, MANIFEST_FILENAME};
-use naive_proof::{NaiveProofOptions, run_naive_proof, render_naive_proof};
+use fo_corpus::{MANIFEST_FILENAME, atomic_write, sha256_hex, unix_timestamp};
+use naive_proof::{NaiveProofOptions, render_naive_proof, run_naive_proof};
 use serde::Serialize;
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -136,16 +136,19 @@ fn run() -> CliResult<()> {
     let environment_path = command.output.join("environment.json");
     atomic_write(&report_path, &serde_json::to_vec_pretty(&report)?)?;
     atomic_write(&examples_path, render_naive_proof(&report).as_bytes())?;
-    atomic_write(
-        &environment_path,
-        &serde_json::to_vec_pretty(&environment)?,
+    atomic_write(&environment_path, &serde_json::to_vec_pretty(&environment)?)?;
+    write_checksums(
+        &command.output,
+        &[&report_path, &examples_path, &environment_path],
     )?;
-    write_checksums(&command.output, &[&report_path, &examples_path, &environment_path])?;
 
     println!("Naive proof bundle: {}", command.output.display());
     println!("Completed queries:  {}", report.completed_queries);
     println!("Skipped queries:    {}", report.skipped_queries);
-    println!("DP cells:           {}", report.total_dynamic_programming_cells);
+    println!(
+        "DP cells:           {}",
+        report.total_dynamic_programming_cells
+    );
     println!("p95 speedup:        {:.3}×", report.p95_speedup_over_naive);
     println!(
         "Macro AUPRC delta: {:+.6}",

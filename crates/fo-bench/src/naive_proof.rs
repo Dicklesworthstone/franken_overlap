@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs;
 use std::path::Path;
@@ -17,8 +17,8 @@ pub type ProofResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 pub const NAIVE_PROOF_SCHEMA_VERSION: u32 = 1;
 const NOISE_WORDS: &[&str] = &[
-    "lantern", "railway", "orchard", "ceramic", "violet", "meadow", "saffron",
-    "cabinet", "marble", "festival", "chimney", "harbor", "compass", "velvet",
+    "lantern", "railway", "orchard", "ceramic", "violet", "meadow", "saffron", "cabinet", "marble",
+    "festival", "chimney", "harbor", "compass", "velvet",
 ];
 
 #[derive(Debug, Clone)]
@@ -205,7 +205,9 @@ pub fn run_naive_proof(
     let manifest = CorpusManifest::load(corpus_root)?;
     let documents = load_documents(corpus_root, &manifest, options)?;
     if documents.len() < 2 {
-        return Err(invalid("corpus contains fewer than two sufficiently long documents"));
+        return Err(invalid(
+            "corpus contains fewer than two sufficiently long documents",
+        ));
     }
     let index = build_index(&documents)?;
     let queries = generate_queries(&documents, options);
@@ -328,8 +330,20 @@ pub fn run_naive_proof(
             naive_ms,
             franken_overlap_full_corpus_ms: franken_ms,
             speedup: safe_ratio(naive_ms, franken_ms),
-            naive_source_rank: rank_interval(&naive_scores, candidates.iter().position(|&value| value == query.source).unwrap_or(0)),
-            franken_source_rank: rank_interval(&franken_scores, candidates.iter().position(|&value| value == query.source).unwrap_or(0)),
+            naive_source_rank: rank_interval(
+                &naive_scores,
+                candidates
+                    .iter()
+                    .position(|&value| value == query.source)
+                    .unwrap_or(0),
+            ),
+            franken_source_rank: rank_interval(
+                &franken_scores,
+                candidates
+                    .iter()
+                    .position(|&value| value == query.source)
+                    .unwrap_or(0),
+            ),
             candidates: candidate_proofs,
         });
     }
@@ -358,7 +372,10 @@ pub fn run_naive_proof(
         completed_queries: completed.len(),
         skipped_queries: skipped,
         hard_negatives_per_query: options.hard_negatives,
-        candidate_subset_size: options.hard_negatives.saturating_add(1).min(documents.len()),
+        candidate_subset_size: options
+            .hard_negatives
+            .saturating_add(1)
+            .min(documents.len()),
         passage_words: options.passage_words,
         repetitions: options.repetitions,
         seed: options.seed,
@@ -385,7 +402,10 @@ pub fn render_naive_proof(report: &NaiveProofReport) -> String {
     let mut output = String::new();
     output.push_str("# FrankenOverlap versus naïve semi-global Levenshtein\n\n");
     output.push_str(&format!("Corpus: `{}`  \n", report.corpus_id));
-    output.push_str(&format!("Indexed documents: {}  \n", report.indexed_documents));
+    output.push_str(&format!(
+        "Indexed documents: {}  \n",
+        report.indexed_documents
+    ));
     output.push_str(&format!(
         "Completed / skipped queries: {} / {}  \n",
         report.completed_queries, report.skipped_queries
@@ -424,7 +444,10 @@ pub fn render_naive_proof(report: &NaiveProofReport) -> String {
     output.push_str("The naïve method scans only the source plus selected hard negatives. FrankenOverlap searches the complete indexed corpus, so a speedup above one is deliberately conservative.\n\n");
     output.push_str("## Real query examples\n\n");
     for query in &report.queries {
-        output.push_str(&format!("### {} — {}\n\n", query.profile, query.source_title));
+        output.push_str(&format!(
+            "### {} — {}\n\n",
+            query.profile, query.source_title
+        ));
         output.push_str(&format!("> {}\n\n", one_line(&query.query_text, 700)));
         output.push_str(&format!(
             "Naïve: {:.3} ms, source rank {:.2} ({}–{}).  \n",
@@ -513,20 +536,15 @@ fn build_index(documents: &[Document]) -> ProofResult<Index> {
 fn generate_queries(documents: &[Document], options: &NaiveProofOptions) -> Vec<GeneratedQuery> {
     let mut sources = (0..documents.len()).collect::<Vec<_>>();
     sources.sort_unstable_by_key(|&index| {
-        stable_hash(
-            &documents[index].id,
-            options.seed ^ 0xa5a5_a5a5_a5a5_a5a5,
-        )
+        stable_hash(&documents[index].id, options.seed ^ 0xa5a5_a5a5_a5a5_a5a5)
     });
     let mut queries = Vec::with_capacity(options.query_count);
     for query_index in 0..options.query_count {
         let source = sources[query_index % sources.len()];
         let profile = Profile::ALL[query_index % Profile::ALL.len()];
         let document = &documents[source];
-        let mut rng = DeterministicRng::new(stable_hash(
-            &document.id,
-            options.seed ^ query_index as u64,
-        ));
+        let mut rng =
+            DeterministicRng::new(stable_hash(&document.id, options.seed ^ query_index as u64));
         let maximum_start = document.words.len().saturating_sub(options.passage_words);
         let start = if maximum_start == 0 {
             0
@@ -638,8 +656,7 @@ fn semi_global_levenshtein(pattern: &[u32], text: &[u32]) -> usize {
     for (pattern_index, &pattern_token) in pattern.iter().enumerate() {
         current[0] = pattern_index + 1;
         for (text_index, &text_token) in text.iter().enumerate() {
-            let substitution = previous[text_index]
-                + usize::from(pattern_token != text_token);
+            let substitution = previous[text_index] + usize::from(pattern_token != text_token);
             let deletion = previous[text_index + 1] + 1;
             let insertion = current[text_index] + 1;
             current[text_index + 1] = substitution.min(deletion).min(insertion);
@@ -659,8 +676,7 @@ fn timing_report(latencies: &[f64], completed_queries: usize) -> MethodTiming {
         p50_ms: percentile(&sorted, 0.50),
         p95_ms: percentile(&sorted, 0.95),
         p99_ms: percentile(&sorted, 0.99),
-        queries_per_second: completed_queries as f64
-            / (total_ms / 1_000.0).max(1.0e-12),
+        queries_per_second: completed_queries as f64 / (total_ms / 1_000.0).max(1.0e-12),
     }
 }
 
@@ -810,9 +826,11 @@ fn safe_ratio(numerator: f64, denominator: f64) -> f64 {
 }
 
 fn stable_hash(value: &str, seed: u64) -> u64 {
-    value.bytes().fold(seed ^ 0xcbf2_9ce4_8422_2325, |hash, byte| {
-        (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
-    })
+    value
+        .bytes()
+        .fold(seed ^ 0xcbf2_9ce4_8422_2325, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+        })
 }
 
 fn one_line(value: &str, maximum: usize) -> String {

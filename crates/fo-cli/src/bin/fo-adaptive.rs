@@ -266,11 +266,9 @@ fn build_plan(index: &Index, specimen: &str, command: &Cli) -> CliResult<QueryPl
         .filter(|cost| cost.posting_count <= adaptive_cap)
         .map(|cost| cost.multiplicity)
         .sum::<usize>();
-    let suppressed_feature_occurrences = matched_feature_occurrences
-        .saturating_sub(retained_occurrences);
-    let unmatched_feature_occurrences = selected
-        .len()
-        .saturating_sub(matched_feature_occurrences);
+    let suppressed_feature_occurrences =
+        matched_feature_occurrences.saturating_sub(retained_occurrences);
+    let unmatched_feature_occurrences = selected.len().saturating_sub(matched_feature_occurrences);
 
     let low_entropy = token_entropy_bits < 2.25 || repeated_token_fraction > 0.72;
     let over_budget = estimated_before > u128::from(command.vote_pair_budget);
@@ -288,9 +286,7 @@ fn build_plan(index: &Index, specimen: &str, command: &Cli) -> CliResult<QueryPl
         PlannedRoute::SparseSelective
     } else if normalized.tokens.len() >= 1_024 && intent == SearchIntent::SourceAttribution {
         PlannedRoute::CompositeRecommended
-    } else if unmatched_feature_occurrences > matched_feature_occurrences
-        && selected.len() >= 8
-    {
+    } else if unmatched_feature_occurrences > matched_feature_occurrences && selected.len() >= 8 {
         PlannedRoute::MultiViewRecommended
     } else {
         PlannedRoute::SparseBalanced
@@ -345,9 +341,7 @@ fn build_plan(index: &Index, specimen: &str, command: &Cli) -> CliResult<QueryPl
 
     let mut rationale = Vec::new();
     if query_is_short {
-        rationale.push(
-            "the normalized specimen fits the exact Myers bit-vector path".to_owned(),
-        );
+        rationale.push("the normalized specimen fits the exact Myers bit-vector path".to_owned());
     }
     if over_budget {
         rationale.push(format!(
@@ -381,7 +375,8 @@ fn build_plan(index: &Index, specimen: &str, command: &Cli) -> CliResult<QueryPl
         );
     }
     if rationale.is_empty() {
-        rationale.push("the ordinary sparse indexed route fits the declared work budget".to_owned());
+        rationale
+            .push("the ordinary sparse indexed route fits the declared work budget".to_owned());
     }
 
     Ok(QueryPlan {
@@ -432,7 +427,10 @@ fn adaptive_posting_cap(
         cap = cap.max(cost.posting_count);
     }
     if retained < minimum_occurrences {
-        for cost in costs.iter().filter(|cost| cost.posting_count <= maximum_cap) {
+        for cost in costs
+            .iter()
+            .filter(|cost| cost.posting_count <= maximum_cap)
+        {
             retained = retained.saturating_add(cost.multiplicity);
             cap = cap.max(cost.posting_count);
             if retained >= minimum_occurrences {
@@ -487,7 +485,10 @@ fn print_plan(plan: &QueryPlan, json: bool) -> CliResult<()> {
     }
     println!("Route:                         {:?}", plan.route);
     println!("Normalized tokens:             {}", plan.normalized_tokens);
-    println!("Token entropy:                 {:.4} bits", plan.token_entropy_bits);
+    println!(
+        "Token entropy:                 {:.4} bits",
+        plan.token_entropy_bits
+    );
     println!(
         "Repeated-token fraction:       {:.2}%",
         plan.repeated_token_fraction * 100.0
@@ -507,8 +508,7 @@ fn print_plan(plan: &QueryPlan, json: bool) -> CliResult<()> {
     );
     println!(
         "Estimated vote pairs:          {} -> {}",
-        plan.estimated_vote_pairs_before_suppression,
-        plan.estimated_vote_pairs_after_suppression
+        plan.estimated_vote_pairs_before_suppression, plan.estimated_vote_pairs_after_suppression
     );
     println!(
         "Effective posting cap:         {}",
