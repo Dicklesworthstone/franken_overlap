@@ -2,7 +2,7 @@
 
 use std::error::Error;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 use fo_corpus::{
@@ -281,4 +281,9 @@ fn invalid(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
         std::io::ErrorKind::InvalidInput,
         message.into(),
     ))
+}
+
+#[allow(dead_code)]
+fn _safe_relative(path: &Path) -> bool {
+    !path.is_absolute()
 }

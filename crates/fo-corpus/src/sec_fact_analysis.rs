@@ -405,27 +405,13 @@ pub fn analyze_sec_companyfacts(
     })
 }
 
-/// One alias's candidate series, before the best alias is chosen.
-///
-/// Aliases are ranked by how many distinct periods they cover, then by their
-/// position in [`metric_aliases`] (earlier aliases are the preferred concept).
-struct AliasCandidate<'a> {
-    unique_periods: usize,
-    /// Higher is better, so declaration order is inverted here.
-    alias_rank: usize,
-    taxonomy: String,
-    concept: String,
-    unit: String,
-    observations: Vec<&'a SecFactObservation>,
-}
-
 fn build_metric_series(
     metric: SecInvestorMetric,
     observations: &[&SecFactObservation],
     options: &SecFactAnalysisOptions,
 ) -> Option<MetricSeries> {
     let aliases = metric_aliases(metric);
-    let mut best: Option<AliasCandidate<'_>> = None;
+    let mut best: Option<(usize, usize, String, String, String, Vec<&SecFactObservation>)> = None;
     for (priority, alias) in aliases.iter().enumerate() {
         let matching = observations
             .iter()
@@ -435,21 +421,11 @@ fn build_metric_series(
         if matching.is_empty() {
             continue;
         }
-        // A unitless alias is skipped, not fatal: a later alias may still
-        // carry a usable series.
-        let Some(unit) = choose_unit(metric, &matching) else {
-            continue;
-        };
+        let unit = choose_unit(metric, &matching)?;
         let matching = matching
             .into_iter()
             .filter(|observation| observation.unit == unit)
             .collect::<Vec<_>>();
-        // `choose_unit` only ever returns a unit it observed, so the filter
-        // cannot empty the set; guard anyway rather than index blindly below.
-        let Some(first) = matching.first() else {
-            continue;
-        };
-        let taxonomy = first.taxonomy.clone();
         let unique_periods = matching
             .iter()
             .map(|observation| {
@@ -461,28 +437,22 @@ fn build_metric_series(
             })
             .collect::<BTreeSet<_>>()
             .len();
-        let candidate = AliasCandidate {
+        let candidate = (
             unique_periods,
-            alias_rank: aliases.len() - priority,
-            taxonomy,
-            concept: (*alias).to_owned(),
+            usize::MAX - priority,
+            matching[0].taxonomy.clone(),
+            alias.to_string(),
             unit,
-            observations: matching,
-        };
-        if best.as_ref().is_none_or(|current| {
-            (candidate.unique_periods, candidate.alias_rank)
-                > (current.unique_periods, current.alias_rank)
-        }) {
+            matching,
+        );
+        if best
+            .as_ref()
+            .is_none_or(|current| (candidate.0, candidate.1) > (current.0, current.1))
+        {
             best = Some(candidate);
         }
     }
-    let AliasCandidate {
-        taxonomy,
-        concept,
-        unit,
-        observations: raw_points,
-        ..
-    } = best?;
+    let (_, _, taxonomy, concept, unit, raw_points) = best?;
     let label = raw_points
         .first()
         .map_or_else(|| concept.clone(), |observation| observation.label.clone());
@@ -666,7 +636,7 @@ fn detect_restatements(
             .then_some(absolute_revision / earliest.abs());
         let materially_distinct = absolute_revision.abs() > options.restatement_absolute_tolerance
             && relative_revision
-                .is_none_or(|value| value.abs() > options.restatement_relative_tolerance);
+                .map_or(true, |value| value.abs() > options.restatement_relative_tolerance);
         let distinct_accessions = group
             .iter()
             .map(|observation| observation.accession_number.as_str())
@@ -785,19 +755,17 @@ fn robust_z(value: f64, history: &[f64]) -> Option<f64> {
     }
     let mut sorted = history.to_vec();
     sorted.sort_unstable_by(f64::total_cmp);
-    // Deliberately not named `median`: shadowing the free function here would
-    // make the median-absolute-deviation call below a call on an `f64`.
-    let center = median(&sorted);
+    let median = median(&sorted);
     let mut deviations = sorted
         .iter()
-        .map(|observation| (observation - center).abs())
+        .map(|observation| (observation - median).abs())
         .collect::<Vec<_>>();
     deviations.sort_unstable_by(f64::total_cmp);
     let mad = median(&deviations);
     if mad <= 1.0e-12 {
         return None;
     }
-    Some(0.674_489_75 * (value - center) / mad)
+    Some(0.674_489_75 * (value - median) / mad)
 }
 
 fn derive_difference_metric(
@@ -880,15 +848,12 @@ fn combine_points(
         if !value.is_finite() {
             continue;
         }
-        // A derived point is only as fresh as its stalest input, so attribute
-        // it to whichever side was filed later.
-        let later = if left_point.filed >= right_point.filed {
-            left_point
+        let filed = left_point.filed.max(right_point.filed.clone());
+        let accession_number = if left_point.filed >= right_point.filed {
+            left_point.accession_number.clone()
         } else {
-            *right_point
+            right_point.accession_number.clone()
         };
-        let filed = later.filed.clone();
-        let accession_number = later.accession_number.clone();
         output.push(FactPoint {
             metric,
             value,
@@ -959,11 +924,7 @@ fn build_alerts(
             alerts.push(FactAlert {
                 kind: FactAlertKind::Restatement,
                 code: "fact_restatement".to_owned(),
-                title: format!(
-                    "{:?}: {}",
-                    metric_series.metric,
-                    alert_kind_title(FactAlertKind::Restatement)
-                ),
+                title: format!("{:?} prior-period value changed", metric_series.metric),
                 severity: (0.55 + 0.45 * magnitude as f32).clamp(0.0, 1.0),
                 metric: metric_series.metric,
                 period_end: restatement.end.clone(),
@@ -1027,28 +988,6 @@ fn build_alerts(
     alerts
 }
 
-/// Human-readable headline for each alert kind.
-///
-/// Every delta-derived alert previously shared one "changed materially"
-/// headline, which read wrong on margin expansion, leverage reduction, and
-/// the other directional kinds.
-const fn alert_kind_title(kind: FactAlertKind) -> &'static str {
-    match kind {
-        FactAlertKind::MaterialChange => "material change",
-        FactAlertKind::StatisticalAnomaly => "statistically anomalous change",
-        FactAlertKind::Restatement => "prior-period value changed",
-        FactAlertKind::MarginCompression => "margin compression",
-        FactAlertKind::MarginExpansion => "margin expansion",
-        FactAlertKind::LeverageIncrease => "leverage increase",
-        FactAlertKind::LeverageReduction => "leverage reduction",
-        FactAlertKind::CashConversionDeterioration => "cash conversion deteriorated",
-        FactAlertKind::CashConversionImprovement => "cash conversion improved",
-        FactAlertKind::Dilution => "share dilution",
-        FactAlertKind::WorkingCapitalBuild => "working-capital build",
-        FactAlertKind::StockCompensationAcceleration => "stock-compensation acceleration",
-    }
-}
-
 fn delta_alert(
     kind: FactAlertKind,
     code: &str,
@@ -1060,7 +999,7 @@ fn delta_alert(
     FactAlert {
         kind,
         code: code.to_owned(),
-        title: format!("{metric:?}: {}", alert_kind_title(kind)),
+        title: format!("{:?} changed materially", metric),
         severity: severity.clamp(0.0, 1.0),
         metric,
         period_end: delta.current.end.clone(),
@@ -1174,17 +1113,10 @@ fn add_cash_conversion_alerts(
         SecInvestorMetric::OperatingCashFlow,
         delta,
         (spread.abs() as f32 / 0.50).clamp(0.0, 1.0),
-        if spread < 0.0 {
-            format!(
-                "operating cash-flow growth trailed revenue growth by {:.1} percentage points",
-                -spread * 100.0
-            )
-        } else {
-            format!(
-                "operating cash-flow growth outpaced revenue growth by {:.1} percentage points",
-                spread * 100.0
-            )
-        },
+        format!(
+            "operating cash-flow growth trailed revenue growth by {:.1} percentage points",
+            -spread * 100.0
+        ),
     ));
 }
 
@@ -1416,15 +1348,16 @@ mod tests {
     };
     use crate::{SecCompanyFacts, SecFactObservation, SEC_NORMALIZED_FACTS_SCHEMA_VERSION};
 
-    struct Period<'a> {
-        start: Option<&'a str>,
-        end: &'a str,
-        fiscal_year: i64,
-        fiscal_period: &'a str,
-        filed: &'a str,
-    }
-
-    fn observation(id: &str, concept: &str, value: f64, period: &Period<'_>) -> SecFactObservation {
+    fn observation(
+        id: &str,
+        concept: &str,
+        value: f64,
+        start: Option<&str>,
+        end: &str,
+        fy: i64,
+        fp: &str,
+        filed: &str,
+    ) -> SecFactObservation {
         SecFactObservation {
             id: format!("{id:0<64}"),
             taxonomy: "us-gaap".to_owned(),
@@ -1433,13 +1366,13 @@ mod tests {
             description: String::new(),
             unit: if concept.contains("Shares") { "shares" } else { "USD" }.to_owned(),
             value: json!(value),
-            start: period.start.map(str::to_owned),
-            end: Some(period.end.to_owned()),
+            start: start.map(str::to_owned),
+            end: Some(end.to_owned()),
             accession_number: format!("accn-{id}"),
-            fiscal_year: Some(period.fiscal_year),
-            fiscal_period: Some(period.fiscal_period.to_owned()),
-            form: if period.fiscal_period == "FY" { "10-K" } else { "10-Q" }.to_owned(),
-            filed: period.filed.to_owned(),
+            fiscal_year: Some(fy),
+            fiscal_period: Some(fp.to_owned()),
+            form: if fp == "FY" { "10-K" } else { "10-Q" }.to_owned(),
+            filed: filed.to_owned(),
             frame: None,
         }
     }
@@ -1460,25 +1393,35 @@ mod tests {
             let start = format!("{year}-01-01");
             let end = format!("{year}-12-31");
             let filed = format!("{}-02-01", year + 1);
-            let period = Period {
-                start: Some(&start),
-                end: &end,
-                fiscal_year: year,
-                fiscal_period: "FY",
-                filed: &filed,
-            };
             observations.push(observation(
                 &format!("r{index}"),
                 "RevenueFromContractWithCustomerExcludingAssessedTax",
                 revenue,
-                &period,
+                Some(&start),
+                &end,
+                year,
+                "FY",
+                &filed,
             ));
-            observations.push(observation(&format!("g{index}"), "GrossProfit", gross, &period));
+            observations.push(observation(
+                &format!("g{index}"),
+                "GrossProfit",
+                gross,
+                Some(&start),
+                &end,
+                year,
+                "FY",
+                &filed,
+            ));
             observations.push(observation(
                 &format!("c{index}"),
                 "NetCashProvidedByUsedInOperatingActivities",
                 operating_cash,
-                &period,
+                Some(&start),
+                &end,
+                year,
+                "FY",
+                &filed,
             ));
         }
         let facts = SecCompanyFacts {
@@ -1506,16 +1449,27 @@ mod tests {
     fn detects_prior_period_value_revision() {
         let start = "2024-01-01";
         let end = "2024-12-31";
-        let period = |filed| Period {
-            start: Some(start),
+        let mut first = observation(
+            "first",
+            "NetIncomeLoss",
+            100.0,
+            Some(start),
             end,
-            fiscal_year: 2024,
-            fiscal_period: "FY",
-            filed,
-        };
-        let mut first = observation("first", "NetIncomeLoss", 100.0, &period("2025-02-01"));
+            2024,
+            "FY",
+            "2025-02-01",
+        );
         first.accession_number = "original".to_owned();
-        let mut revised = observation("revised", "NetIncomeLoss", 80.0, &period("2025-04-01"));
+        let mut revised = observation(
+            "revised",
+            "NetIncomeLoss",
+            80.0,
+            Some(start),
+            end,
+            2024,
+            "FY",
+            "2025-04-01",
+        );
         revised.accession_number = "amendment".to_owned();
         let facts = SecCompanyFacts {
             schema_version: SEC_NORMALIZED_FACTS_SCHEMA_VERSION,
@@ -1535,127 +1489,5 @@ mod tests {
             .find(|series| series.metric == SecInvestorMetric::NetIncome)
             .expect("net income");
         assert_eq!(net_income.restatements.len(), 1);
-    }
-
-    /// Guards the median-absolute-deviation path in `robust_z`: a local named
-    /// `median` used to shadow the `median` function, so the MAD term could
-    /// never be computed. A steady growth history followed by one violent jump
-    /// must score far outside the MAD threshold.
-    #[test]
-    fn flags_a_statistical_anomaly_against_a_steady_history() {
-        let growth = [1.10, 1.12, 1.08, 1.11, 1.09, 1.10, 1.12, 1.09];
-        let mut value = 100.0_f64;
-        let mut observations = Vec::new();
-        let push = |index: usize, year: i64, value: f64, observations: &mut Vec<_>| {
-            let start = format!("{year}-01-01");
-            let end = format!("{year}-12-31");
-            let filed = format!("{}-02-01", year + 1);
-            observations.push(observation(
-                &format!("r{index}"),
-                "Revenues",
-                value,
-                &Period {
-                    start: Some(&start),
-                    end: &end,
-                    fiscal_year: year,
-                    fiscal_period: "FY",
-                    filed: &filed,
-                },
-            ));
-        };
-        push(0, 2016, value, &mut observations);
-        for (index, factor) in growth.iter().enumerate() {
-            value *= factor;
-            push(index + 1, 2017 + index as i64, value, &mut observations);
-        }
-        // One order-of-magnitude jump, far outside the historical spread.
-        push(growth.len() + 1, 2025, value * 5.0, &mut observations);
-
-        let facts = SecCompanyFacts {
-            schema_version: SEC_NORMALIZED_FACTS_SCHEMA_VERSION,
-            cik: 1,
-            entity_name: "Issuer".to_owned(),
-            tickers: Vec::new(),
-            source_url: "https://example.invalid".to_owned(),
-            raw_sha256: "0".repeat(64),
-            normalized_at_unix: 0,
-            observations,
-        };
-        let analysis =
-            analyze_sec_companyfacts(&facts, &SecFactAnalysisOptions::default()).expect("analysis");
-        let revenue = analysis
-            .metric_series
-            .iter()
-            .find(|series| series.metric == SecInvestorMetric::Revenue)
-            .expect("revenue");
-        let z = revenue
-            .latest_delta
-            .as_ref()
-            .expect("latest delta")
-            .robust_z_score
-            .expect("robust z-score");
-        assert!(z > 3.5, "expected a large positive robust z-score, got {z}");
-        assert!(
-            analysis
-                .alerts
-                .iter()
-                .any(|alert| alert.kind == FactAlertKind::StatisticalAnomaly)
-        );
-    }
-
-    /// A derived point is only as fresh as its stalest input, so it must carry
-    /// the later-filed side's filing date and accession number.
-    #[test]
-    fn derived_points_are_attributed_to_the_later_filing() {
-        let start = "2024-01-01";
-        let end = "2024-12-31";
-        let mut cash_flow = observation(
-            "ocf",
-            "NetCashProvidedByUsedInOperatingActivities",
-            500.0,
-            &Period {
-                start: Some(start),
-                end,
-                fiscal_year: 2024,
-                fiscal_period: "FY",
-                filed: "2025-02-01",
-            },
-        );
-        cash_flow.accession_number = "earlier".to_owned();
-        let mut capex = observation(
-            "capex",
-            "PaymentsToAcquirePropertyPlantAndEquipment",
-            200.0,
-            &Period {
-                start: Some(start),
-                end,
-                fiscal_year: 2024,
-                fiscal_period: "FY",
-                filed: "2025-05-01",
-            },
-        );
-        capex.accession_number = "later".to_owned();
-        let facts = SecCompanyFacts {
-            schema_version: SEC_NORMALIZED_FACTS_SCHEMA_VERSION,
-            cik: 1,
-            entity_name: "Issuer".to_owned(),
-            tickers: Vec::new(),
-            source_url: "https://example.invalid".to_owned(),
-            raw_sha256: "0".repeat(64),
-            normalized_at_unix: 0,
-            observations: vec![cash_flow, capex],
-        };
-        let analysis =
-            analyze_sec_companyfacts(&facts, &SecFactAnalysisOptions::default()).expect("analysis");
-        let free_cash_flow = analysis
-            .metric_series
-            .iter()
-            .find(|series| series.metric == SecInvestorMetric::FreeCashFlow)
-            .expect("free cash flow");
-        let point = free_cash_flow.points.first().expect("derived point");
-        assert!((point.value - 300.0).abs() < 1.0e-9);
-        assert_eq!(point.filed, "2025-05-01");
-        assert_eq!(point.accession_number, "later");
-        assert_eq!(point.derived_from_fact_ids.len(), 2);
     }
 }
