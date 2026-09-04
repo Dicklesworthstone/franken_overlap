@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    atomic_write, sha256_hex, unix_timestamp, CorpusError, DownloadClient, HttpOptions, Result,
-    SEC_TICKERS_URL,
+    CorpusError, DownloadClient, HttpOptions, Result, SEC_TICKERS_URL, atomic_write, sha256_hex,
+    unix_timestamp,
 };
 
 pub const SEC_COMPANYFACTS_BASE: &str = "https://data.sec.gov/api/xbrl/companyfacts";
@@ -171,8 +171,7 @@ impl SecFactsManifest {
             || self.company_tickers_sha256.len() != 64
         {
             return Err(CorpusError::Invalid(
-                "SEC facts manifest has an invalid schema, identity, or ticker snapshot"
-                    .to_owned(),
+                "SEC facts manifest has an invalid schema, identity, or ticker snapshot".to_owned(),
             ));
         }
         let mut ciks = BTreeSet::new();
@@ -351,7 +350,7 @@ struct RawCompanyFacts {
     cik: u64,
     #[serde(rename = "entityName")]
     entity_name: String,
-    facts: BTreeMap<String, BTreeMap<String, RawConcept>>, 
+    facts: BTreeMap<String, BTreeMap<String, RawConcept>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -402,7 +401,8 @@ pub fn fetch_sec_companyfacts(options: SecFactsFetchOptions) -> Result<SecFactsF
         timeout: Duration::from_secs(120),
     })?;
     let ticker_response = client.get(SEC_TICKERS_URL, options.maximum_ticker_json_bytes)?;
-    let rows = serde_json::from_slice::<BTreeMap<String, CompanyTickerRow>>(&ticker_response.bytes)?;
+    let rows =
+        serde_json::from_slice::<BTreeMap<String, CompanyTickerRow>>(&ticker_response.bytes)?;
     let companies = select_companies(&rows, &options)?;
     let corpus_id = format!("sec-companyfacts-{}", companies.len());
     let manifest_path = options.output_dir.join(SEC_FACTS_MANIFEST_FILENAME);
@@ -429,19 +429,25 @@ pub fn fetch_sec_companyfacts(options: SecFactsFetchOptions) -> Result<SecFactsF
         if !options.overwrite
             && raw_destination.is_file()
             && normalized_destination.is_file()
-            && manifest.companies.iter().find(|company| company.cik == selected.cik).is_some_and(
-                |company| {
+            && manifest
+                .companies
+                .iter()
+                .find(|company| company.cik == selected.cik)
+                .is_some_and(|company| {
                     fs::metadata(&raw_destination)
                         .map(|metadata| metadata.len() == company.raw_bytes)
                         .unwrap_or(false)
                         && fs::metadata(&normalized_destination)
                             .map(|metadata| metadata.len() == company.normalized_bytes)
                             .unwrap_or(false)
-                },
-            )
+                })
         {
             reused += 1;
-            if let Some(company) = manifest.companies.iter().find(|company| company.cik == selected.cik) {
+            if let Some(company) = manifest
+                .companies
+                .iter()
+                .find(|company| company.cik == selected.cik)
+            {
                 observations += company.observations;
             }
             continue;
@@ -548,8 +554,8 @@ pub fn verify_sec_companyfacts(root: impl AsRef<Path>) -> Result<SecFactsVerific
         let raw_path = root.join(&company.raw_path);
         let normalized_path = root.join(&company.normalized_path);
         let raw = fs::read(&raw_path).map_err(|error| CorpusError::io(&raw_path, error))?;
-        let normalized = fs::read(&normalized_path)
-            .map_err(|error| CorpusError::io(&normalized_path, error))?;
+        let normalized =
+            fs::read(&normalized_path).map_err(|error| CorpusError::io(&normalized_path, error))?;
         if raw.len() as u64 != company.raw_bytes
             || normalized.len() as u64 != company.normalized_bytes
             || sha256_hex(&raw) != company.raw_sha256
@@ -677,9 +683,9 @@ fn select_companies(
     let mut selected = BTreeMap::<u64, SelectedCompany>::new();
     for ticker in &options.tickers {
         let normalized = ticker.trim().to_ascii_uppercase();
-        let row = by_ticker
-            .get(&normalized)
-            .ok_or_else(|| CorpusError::Invalid(format!("SEC ticker {normalized} was not found")))?;
+        let row = by_ticker.get(&normalized).ok_or_else(|| {
+            CorpusError::Invalid(format!("SEC ticker {normalized} was not found"))
+        })?;
         selected.insert(row.cik_str, make(row.cik_str, &by_cik[&row.cik_str]));
     }
     for &cik in &options.ciks {
@@ -733,7 +739,7 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{normalize_companyfacts, RawCompanyFacts, SecFactObservation, SelectedCompany};
+    use super::{RawCompanyFacts, SecFactObservation, SelectedCompany, normalize_companyfacts};
 
     #[test]
     fn numeric_values_accept_numbers_and_numeric_strings() {

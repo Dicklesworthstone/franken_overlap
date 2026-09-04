@@ -33,16 +33,15 @@ pub use sec::{
     SecPreset, fetch_sec_10k,
 };
 pub use sec_fact_analysis::{
-    analyze_sec_companyfacts, FactAlert, FactAlertKind, FactPeriodType, FactPoint,
-    FactRestatement, MetricDelta, MetricSeries, SecFactAnalysis, SecFactAnalysisOptions,
-    SecInvestorMetric, SEC_FACT_ANALYSIS_SCHEMA_VERSION,
+    FactAlert, FactAlertKind, FactPeriodType, FactPoint, FactRestatement, MetricDelta,
+    MetricSeries, SEC_FACT_ANALYSIS_SCHEMA_VERSION, SecFactAnalysis, SecFactAnalysisOptions,
+    SecInvestorMetric, analyze_sec_companyfacts,
 };
 pub use sec_facts::{
-    fetch_sec_companyfacts, verify_sec_companyfacts, SecCompanyFacts, SecFactObservation,
+    SEC_COMPANYFACTS_BASE, SEC_FACTS_MANIFEST_FILENAME, SEC_FACTS_MANIFEST_SCHEMA_VERSION,
+    SEC_NORMALIZED_FACTS_SCHEMA_VERSION, SecCompanyFacts, SecFactObservation,
     SecFactsCompanyRecord, SecFactsFailure, SecFactsFetchOptions, SecFactsFetchReport,
-    SecFactsManifest, SecFactsVerificationReport, SEC_COMPANYFACTS_BASE,
-    SEC_FACTS_MANIFEST_FILENAME, SEC_FACTS_MANIFEST_SCHEMA_VERSION,
-    SEC_NORMALIZED_FACTS_SCHEMA_VERSION,
+    SecFactsManifest, SecFactsVerificationReport, fetch_sec_companyfacts, verify_sec_companyfacts,
 };
 pub use sec_filings::{
     COMMENT_LETTER_FORMS, INVESTOR_CORE_FORMS, REGISTRATION_FORMS, SecFilingCategory,

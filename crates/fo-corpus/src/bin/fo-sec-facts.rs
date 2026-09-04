@@ -2,12 +2,12 @@
 
 use std::error::Error;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 use fo_corpus::{
-    analyze_sec_companyfacts, atomic_write, fetch_sec_companyfacts, verify_sec_companyfacts,
     SecCompanyFacts, SecFactAnalysisOptions, SecFactsFetchOptions, SecFactsManifest,
+    analyze_sec_companyfacts, atomic_write, fetch_sec_companyfacts, verify_sec_companyfacts,
 };
 
 type CliResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -197,7 +197,10 @@ fn run_analyze(command: AnalyzeCommand) -> CliResult<()> {
         ..SecFactAnalysisOptions::default()
     };
     options.validate()?;
-    let selected = command.ciks.into_iter().collect::<std::collections::BTreeSet<_>>();
+    let selected = command
+        .ciks
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
     let mut summaries = Vec::new();
     for company in &manifest.companies {
         if !selected.is_empty() && !selected.contains(&company.cik) {
@@ -271,9 +274,7 @@ fn render_summary(summary: &serde_json::Value) -> String {
 }
 
 fn summaries_len(summary: &serde_json::Value) -> usize {
-    summary["company_analyses"]
-        .as_array()
-        .map_or(0, Vec::len)
+    summary["company_analyses"].as_array().map_or(0, Vec::len)
 }
 
 fn invalid(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
@@ -281,9 +282,4 @@ fn invalid(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
         std::io::ErrorKind::InvalidInput,
         message.into(),
     ))
-}
-
-#[allow(dead_code)]
-fn _safe_relative(path: &Path) -> bool {
-    !path.is_absolute()
 }
