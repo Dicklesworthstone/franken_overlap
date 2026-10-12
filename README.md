@@ -8,6 +8,41 @@ The same infrastructure also supports fielded BM25, phrase and proximity search,
 
 The default core is safe Rust and has no C, C++, Python, BLAS, or GPU runtime dependency.
 
+## Install released Linux binaries
+
+The [official releases](https://github.com/Dicklesworthstone/franken_overlap/releases)
+distribute `franken-overlap-x86_64-unknown-linux-gnu.tar.xz` for Linux x86_64
+with glibc 2.35 or newer. The archive includes the search CLIs and the corpus
+acquisition CLIs, including `fo`, `fo-corpus`, `fo-section`, and `fo-sec-fetch`.
+Rust and Cargo are not required to install or run these executables.
+
+Download the archive and `SHA256SUMS` from the same release, then:
+
+```bash
+sha256sum -c SHA256SUMS
+mkdir -p franken-overlap
+tar -xJf franken-overlap-x86_64-unknown-linux-gnu.tar.xz -C franken-overlap
+mkdir -p "$HOME/.local/bin"
+cp franken-overlap/bin/* "$HOME/.local/bin/"
+export PATH="$HOME/.local/bin:$PATH"
+fo --version
+fo-corpus --version
+fo index ./documents --output corpus.foidx
+fo query corpus.foidx specimen.txt --intent source-attribution
+```
+
+For SEC 10-K acquisition, provide your own identity:
+
+```bash
+export SEC_USER_AGENT='Example Research research@example.com'
+fo-corpus sec10k --preset smoke --output corpora/sec-smoke
+```
+
+Acquisition needs outbound HTTPS access and system TLS certificates. The release
+uses the default search backend; the optional FrankenSciPy backend remains a
+source-build option. `BUILD_INFO` inside the archive records the source commit,
+compiler, target, and lockfile digest.
+
 ## The upshot
 
 FrankenOverlap is most valuable when the question is not merely:
