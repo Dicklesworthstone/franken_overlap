@@ -1,0 +1,114 @@
+name: verify released Linux binaries
+
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published version tag to verify (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  installed-binaries:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      ARCHIVE: franken-overlap-x86_64-unknown-linux-gnu.tar.xz
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - name: Resolve and verify the published source tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-$(cat RELEASE_VERSION)}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          sha=$(git ls-remote --tags origin "refs/tags/$tag" "refs/tags/$tag^{}" |
+            awk '/\^\{\}$/ {peeled=$1; next} {direct=$1} END {print peeled ? peeled : direct}')
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ -z "$EXPECTED_SHA" || "$sha" == "$EXPECTED_SHA" ]] || { echo 'Tag does not identify the release build'; exit 1; }
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "RELEASE_SHA=$sha" >> "$GITHUB_ENV"
+      - name: Retrieve build-time checksums for independent comparison
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-x86_64
+          path: expected
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Download official assets without authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir downloaded installed
+          for asset in "$ARCHIVE" "$ARCHIVE.sha256" SHA256SUMS; do
+            curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
+              --connect-timeout 20 --max-time 180 \
+              --user-agent 'OpenAI File Downloader, XaiImageApiFetch/1.0' \
+              --output "downloaded/$asset" \
+              "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$asset"
+          done
+          if [[ -f expected/SHA256SUMS ]]; then
+            cmp expected/SHA256SUMS downloaded/SHA256SUMS
+          fi
+          (cd downloaded; sha256sum -c SHA256SUMS; sha256sum -c "$ARCHIVE.sha256")
+          python3 - <<'PY'
+          import os, pathlib, tarfile
+          with tarfile.open('downloaded/' + os.environ['ARCHIVE'], 'r:xz') as archive:
+              for member in archive.getmembers():
+                  path = pathlib.PurePosixPath(member.name)
+                  if path.is_absolute() or '..' in path.parts or not (member.isfile() or member.isdir()):
+                      raise SystemExit(f'Unsafe release archive member: {member.name}')
+          PY
+          tar -xJf "downloaded/$ARCHIVE" -C installed
+          grep -Fx "commit=$RELEASE_SHA" installed/BUILD_INFO
+      - name: Execute every packaged CLI in a clean Linux runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x installed/bin/fo
+          test -x installed/bin/fo-corpus
+          test -x installed/bin/fo-section
+          for binary in installed/bin/*; do
+            file "$binary" | grep -q 'ELF 64-bit.*x86-64'
+            # No Rust, compiler toolchain, build cache, or network is available
+            # inside this clean glibc 2.35 runtime container.
+            docker run --rm --network none -v "$PWD/installed:/opt/fo:ro" \
+              ubuntu:22.04 "/opt/fo/bin/$(basename "$binary")" --help > /dev/null
+          done
+      - name: Exercise installed provenance search and corpus commands
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci/release-smoke.py installed/bin "${RELEASE_TAG#v}" | tee verification.txt
+          {
+            echo "Release: $RELEASE_TAG"
+            echo "Source: $RELEASE_SHA"
+            cat downloaded/SHA256SUMS
+            cat verification.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-linux-install-verification
+          path: |
+            verification.txt
+            downloaded/SHA256SUMS
+            downloaded/*.sha256
+          if-no-files-found: error
