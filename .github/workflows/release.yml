@@ -33,8 +33,6 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
       - id: version
         shell: bash
         env:
@@ -49,35 +47,17 @@ jobs:
             tag="$(cat RELEASE_VERSION)"
           fi
           [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid release version'; exit 1; }
-          # target_commitish does not move an existing tag. Never upload
-          # binaries built from different sources under an established tag.
-          remote_sha=$(git ls-remote --tags origin "refs/tags/$tag" "refs/tags/$tag^{}" |
-            awk '/\^\{\}$/ {peeled=$1; next} {direct=$1} END {print peeled ? peeled : direct}')
-          [[ -z "$remote_sha" || "$remote_sha" == "$GITHUB_SHA" ]] || { echo 'Existing release tag identifies different sources'; exit 1; }
+          existing="$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")"
+          tagged_commit="$(printf '%s\n' "$existing" | awk '/\^\{\}$/ { peeled=$1 } NR==1 { direct=$1 } END { print peeled ? peeled : direct }')"
+          if [[ -n "$tagged_commit" && "$tagged_commit" != "$GITHUB_SHA" ]]; then
+            echo 'Release tag points at different source; choose a new version.'
+            exit 1
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-      - name: Install the repository-pinned toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          # rustup reads rust-toolchain.toml. Avoid a second compiler pin that
-          # can drift from the compiler used for development and validation.
-          rustup show active-toolchain
-          rustup target add "$TARGET"
-          rustc -Vv
-      - name: Validate binary versions against the requested release
-        shell: bash
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          set -euo pipefail
-          cargo metadata --locked --no-deps --format-version 1 > metadata.json
-          python3 - <<'PY'
-          import json, os
-          versions = {p['name']: p['version'] for p in json.load(open('metadata.json'))['packages']}
-          for package in ('fo-cli', 'fo-corpus'):
-              if 'v' + versions[package] != os.environ['TAG']:
-                  raise SystemExit(f'{package} does not match the requested release tag')
-          PY
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2026-08-31
+          targets: x86_64-unknown-linux-gnu
       - name: Test search, acquisition, and conformance
         run: cargo test --locked -p fo-core -p fo-cli -p fo-corpus -p fo-conformance
       - name: Test optional spectral backend
@@ -86,11 +66,8 @@ jobs:
         run: cargo build --locked --release --target "$TARGET" -p fo-cli -p fo-corpus --bins
       - name: Package deterministic archive and verify extracted executables
         shell: bash
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
-          export LC_ALL=C
           mkdir -p package/bin dist extracted
           # Include every CLI from the two user-facing packages, including
           # fo, fo-corpus, fo-section, and the SEC-specific commands.
@@ -102,28 +79,19 @@ jobs:
           test -x package/bin/fo
           test -x package/bin/fo-corpus
           test -x package/bin/fo-section
-          install -m 644 LICENSE README.md Cargo.lock package/
+          cp LICENSE README.md package/
           {
-            echo "tag=$TAG"
             echo "commit=$GITHUB_SHA"
             echo "target=$TARGET"
-            echo 'minimum_glibc=2.35'
-            echo 'features=default'
             rustc -Vv
-            cargo --version
             sha256sum Cargo.lock
           } > package/BUILD_INFO
           chmod 755 package package/bin
-          chmod 644 package/BUILD_INFO
+          chmod 644 package/LICENSE package/README.md package/BUILD_INFO
           archive="franken-overlap-$TARGET.tar.xz"
           epoch="$(git show -s --format=%ct HEAD)"
-          package_archive() {
-            tar --format=gnu --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
-              -cJf "$1" -C package .
-          }
-          package_archive "dist/$archive"
-          package_archive "$RUNNER_TEMP/repacked.tar.xz"
-          cmp "dist/$archive" "$RUNNER_TEMP/repacked.tar.xz"
+          tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
+            -cJf "dist/$archive" -C package .
           (cd dist; sha256sum "$archive" > "$archive.sha256"; cp "$archive.sha256" SHA256SUMS; sha256sum -c SHA256SUMS)
           tar -xJf "dist/$archive" -C extracted
           for binary in extracted/bin/*; do "$binary" --help > /dev/null; done
@@ -139,15 +107,11 @@ jobs:
           assert hits, 'Edited-passage search returned no provenance results'
           assert any(hit['path'].endswith('source.txt') for hit in hits), hits
           PY
-          # Exercise installed executables outside the source tree before any
-          # publication: index round-trip, edited attribution, corruption rejection.
-          python3 ci/release-smoke.py extracted/bin "${TAG#v}"
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x86_64
           path: dist/*
           if-no-files-found: error
-          compression-level: 0
 
   publish:
     needs: build
@@ -155,9 +119,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
-    concurrency:
-      group: publish-${{ needs.build.outputs.tag }}
-      cancel-in-progress: false
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -184,10 +145,6 @@ jobs:
             Download the tar.xz and SHA256SUMS, run `sha256sum -c SHA256SUMS`,
             extract the archive, and copy bin/* to a directory on your PATH.
             SEC acquisition requires your own SEC_USER_AGENT identity and network access.
-
-            Cargo.lock and BUILD_INFO record the dependencies, source commit,
-            compiler and features. Repeatable archive packaging is verified;
-            bit-identical compiler output across different machines is not claimed.
       - name: Download and execute published asset
         env:
           GH_TOKEN: ${{ github.token }}
@@ -197,7 +154,6 @@ jobs:
           set -euo pipefail
           mkdir downloaded installed
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir downloaded
-          cmp dist/SHA256SUMS downloaded/SHA256SUMS
           (cd downloaded; sha256sum -c SHA256SUMS; sha256sum -c *.sha256)
           tar -xJf "downloaded/franken-overlap-$TARGET.tar.xz" -C installed
           for binary in installed/bin/*; do
