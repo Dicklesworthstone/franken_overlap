@@ -10,7 +10,7 @@ on:
   push:
     tags: ['v*']
     branches: [main]
-    paths: [RELEASE_VERSION]
+    paths: [RELEASE_VERSION, .github/workflows/release.yml]
 
 permissions:
   contents: read
@@ -80,6 +80,8 @@ jobs:
             rustc -Vv
             sha256sum Cargo.lock
           } > package/BUILD_INFO
+          chmod 755 package package/bin
+          chmod 644 package/LICENSE package/README.md package/BUILD_INFO
           archive="franken-overlap-$TARGET.tar.xz"
           epoch="$(git show -s --format=%ct HEAD)"
           tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
@@ -97,6 +99,7 @@ jobs:
           import json
           hits = json.load(open('smoke.json'))
           assert hits, 'Edited-passage search returned no provenance results'
+          assert any(hit['path'].endswith('source.txt') for hit in hits), hits
           PY
       - uses: actions/upload-artifact@v4
         with:
